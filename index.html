@@ -169,8 +169,8 @@ const CHANNEL_GROWTH = [
    Leave them blank and the app runs on this-device localStorage instead.
    See SUPABASE_SETUP.md.
 ==================================================================== */
-const SUPABASE_URL = "";       // e.g. "https://abcd1234.supabase.co"
-const SUPABASE_ANON_KEY = "";  // your project's anon public key
+const SUPABASE_URL = "https://emknrdathhmbetngthpx.supabase.co";       // e.g. "https://abcd1234.supabase.co"
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVta25yZGF0aGhtYmV0bmd0aHB4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0NTk2NzEsImV4cCI6MjA5NzAzNTY3MX0.K5sLubcn0xDui64fV1Bn8O9gof0OVXywWfZR5XENu6w";  // your project's anon public key
 
 const supa = (SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase)
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
