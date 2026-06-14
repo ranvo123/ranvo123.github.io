@@ -1,0 +1,2105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Producer Desk — business tools for producers</title>
+<meta name="description" content="Get paid for the music: deal ledger, royalty tracking, stream estimator, and a free in-browser AI contract helper for producers." />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "lucide-react": "https://esm.sh/lucide-react@0.383.0?external=react"
+  }
+}
+</script>
+<style>
+  html, body, #root { height: 100%; }
+  body { margin: 0; background: #14161b; -webkit-font-smoothing: antialiased; }
+  #root .boot { color: #646b76; font: 13px ui-monospace, Menlo, monospace; display: flex; height: 100%; align-items: center; justify-content: center; }
+</style>
+</head>
+<body>
+<div id="root"><div class="boot">loading Producer Desk…</div></div>
+<script>
+  function __showErr(msg){
+    var r = document.getElementById("root");
+    if (r && r.querySelector(".boot")) {
+      r.innerHTML = '<div style="color:#DB5C4F;font:13px/1.6 ui-monospace,Menlo,monospace;padding:24px;max-width:640px;margin:0 auto">'
+        + 'Producer Desk failed to start.<br><br>' + String(msg)
+        + '<br><br><span style="color:#646b76">Usually a blocked script or network/CDN issue. Hard-refresh (Ctrl/Cmd+Shift+R), or try Chrome/Edge.</span></div>';
+    }
+  }
+  window.addEventListener("error", function(e){ __showErr(e.message || e.error || e); });
+  window.addEventListener("unhandledrejection", function(e){ __showErr((e.reason && e.reason.message) || e.reason || e); });
+</script>
+<script type="text/babel" data-type="module" data-presets="react">
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { createRoot } from "react-dom/client";
+import {
+  Plus, Search, X, FileText, Settings, Trash2, Check, Disc3,
+  Printer, AlertTriangle, Pencil, ChevronRight, Sliders, Wallet,
+  TrendingUp, ExternalLink, Radio, Coins, Globe, ScrollText, Hash, Clapperboard,
+  Lock, Mail, User, LogOut, Eye, EyeOff, ShieldCheck,
+  Calculator, Sparkles, Loader2, RotateCcw, ClipboardPaste,
+  Scale, MessageSquare, Copy,
+  Youtube, GraduationCap, Lightbulb, Rocket, Tag,
+} from "lucide-react";
+
+/* ----------------------------------------------------------------
+   PALETTE — analog studio console: charcoal panels, cream labels,
+   amber "armed" accent, signal-green paid, warning-red overdue.
+----------------------------------------------------------------- */
+const C = {
+  bg: "#060709",
+  panel: "#0d0f12",
+  panel2: "#14171c",
+  raised: "#1c2026",
+  line: "#262a31",
+  ink: "#FFFFFF",
+  dim: "#A2A6AE",
+  faint: "#5C616B",
+  amber: "#FFFFFF",     // accent (white)
+  amberSoft: "#1a1d22",
+  green: "#FFFFFF",
+  greenSoft: "#14171c",
+  red: "#FFFFFF",
+  redSoft: "#1a1d22",
+  blue: "#C7CBD2",
+  blueSoft: "#14171c",
+};
+const FONT_UI = '"Helvetica Neue", Inter, system-ui, -apple-system, Arial, sans-serif';
+const FONT_MONO = 'ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace';
+
+const CURRENCIES = { USD: "$", EUR: "€", GBP: "£", CAD: "C$", AUD: "A$", JPY: "¥", NGN: "₦" };
+
+const WORK_TYPES = [
+  { v: "production", l: "Full production" },
+  { v: "beat_exclusive", l: "Beat — exclusive" },
+  { v: "beat_lease", l: "Beat — lease" },
+  { v: "mixing", l: "Mixing" },
+  { v: "mastering", l: "Mastering" },
+  { v: "songwriting", l: "Songwriting / topline" },
+  { v: "feature", l: "Feature / guest" },
+  { v: "other", l: "Other" },
+];
+
+const STATUSES = {
+  lead:        { l: "Lead",        color: C.faint,   soft: C.panel2 },
+  in_progress: { l: "In progress", color: C.dim,     soft: C.panel2 },
+  delivered:   { l: "Delivered",   color: "#C7CBD2", soft: C.panel2 },
+  invoiced:    { l: "Invoiced",    color: C.ink,     soft: C.raised },
+  overdue:     { l: "Overdue",     color: C.ink,     soft: C.raised },
+  paid:        { l: "Paid",        color: "#6E727B", soft: C.panel2 },
+};
+const STATUS_ORDER = ["lead", "in_progress", "delivered", "invoiced", "paid"];
+
+// Income sources for logged royalty payments + the upfront-fee source.
+const ROYALTY_SOURCES = {
+  pro:           { l: "Performance (PRO)",   color: "#FFFFFF" },
+  mechanical:    { l: "Mechanical (MLC)",    color: "#D2D5DA" },
+  soundexchange: { l: "SoundExchange",       color: "#B0B4BB" },
+  distribution:  { l: "Streaming (distro)",  color: "#8E929A" },
+  label:         { l: "Label royalty",       color: "#74787F" },
+  sync:          { l: "Sync / licensing",    color: "#5C616B" },
+  other:         { l: "Other",               color: "#454A53" },
+};
+const FEE_COLOR = "#FFFFFF";
+
+// Rough, widely-cited per-stream payouts (USD). Highly variable by country,
+// plan tier (free vs premium) and distributor — so they're editable in the app.
+const STREAM_PLATFORMS = [
+  { key: "spotify", name: "Spotify",       color: "#FFFFFF", rate: 0.0035, range: "≈ $0.003–0.005" },
+  { key: "apple",   name: "Apple Music",   color: "#B8BCC2", rate: 0.008,  range: "≈ $0.007–0.010" },
+  { key: "youtube", name: "YouTube Music", color: "#7B7F87", rate: 0.002,  range: "≈ $0.001–0.004" },
+];
+const DEFAULT_RATES = STREAM_PLATFORMS.reduce((o, p) => ((o[p.key] = p.rate), o), {});
+
+/* ---------------------- YouTube growth content ------------------- */
+const TYPE_BEAT_TACTICS = [
+  { icon: Tag, title: "Nail the title formula",
+    body: "Lead with the search term people actually type: \"{Artist} Type Beat\" then a name and mood. Example: Gunna Type Beat \"Float\" | Melodic Trap 2026. One main artist per upload converts better than stuffing five." },
+  { icon: Hash, title: "Tags & description = your SEO",
+    body: "Tags: the artist name, \"type beat\", the genre, the mood, the BPM. In the description put BPM + key, who it's for, your contact, and your licensing/store link up top. YouTube reads this to rank and recommend you." },
+  { icon: Rocket, title: "Ride rising artists",
+    body: "Search demand follows whoever's hot right now. Make beats for artists who are blowing up but aren't over-saturated yet, and refresh older uploads' titles when a new artist trends." },
+  { icon: TrendingUp, title: "Win the first 48 hours",
+    body: "Early watch-time and clicks decide how far a video travels. Post when your audience is online, pin a comment with the free download + lease link, and reply to every early comment to spark engagement." },
+  { icon: Youtube, title: "Sessions, not just views",
+    body: "The algorithm rewards keeping people on YouTube. Use playlists, end screens, and cards to send viewers to your next beat. A 10-beat playlist quietly multiplies your watch-time." },
+  { icon: Lightbulb, title: "Consistent, clean thumbnails",
+    body: "A recognizable thumbnail style builds a brand people click on. Keep fonts and layout consistent and legible on a phone. Use your own art/photos — don't risk copyright strikes with artists' official images." },
+];
+const CHANNEL_GROWTH = [
+  { icon: Rocket, title: "Pick a lane and stay consistent",
+    body: "Channels grow on a clear sound and a steady schedule. Decide your core genres, commit to an upload cadence you can sustain, and let people learn what to expect from you." },
+  { icon: Coins, title: "Free downloads build the funnel",
+    body: "Give a tagged MP3 free to grow trust and reach, and route serious buyers to your store (BeatStars/your site) for untagged leases and exclusives. The free tag is marketing that spreads." },
+  { icon: MessageSquare, title: "Own your audience",
+    body: "Views are rented; an email list and a Discord are yours. Collect emails with the free download, drop new beats and loop kits to your list, and turn casual listeners into repeat customers." },
+  { icon: Globe, title: "Be everywhere the clip lives",
+    body: "Cut 15–30s hooks into Shorts, Reels, and TikTok to feed discovery back to the full beat. One beat can become a week of short-form posts." },
+  { icon: GraduationCap, title: "Collab and network",
+    body: "Producer collabs and placements expose you to new audiences fast. Trade features, join beat challenges, and build real relationships with artists and engineers in your niche." },
+  { icon: TrendingUp, title: "Let the data lead",
+    body: "Check which beats actually convert to sales, not just views. Make more of what sells, retire what doesn't, and reinvest in better cover art, mixing, and promotion." },
+];
+
+/* ---------------- storage (persists across sessions) ------------- */
+/* ====================================================================
+   CLOUD ACCOUNTS (optional): paste your Supabase project values below.
+   Leave them blank and the app runs on this-device localStorage instead.
+   See SUPABASE_SETUP.md.
+==================================================================== */
+const SUPABASE_URL = "";       // e.g. "https://abcd1234.supabase.co"
+const SUPABASE_ANON_KEY = "";  // your project's anon public key
+
+const supa = (SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+const BACKEND = !!supa;
+
+const NS = "thedesk:";
+let __uid = null;     // signed-in user id (cloud mode)
+let __cache = null;   // hydrated key/value cache for the signed-in user
+async function hydrateStore(uid) {
+  __uid = uid; __cache = {};
+  if (BACKEND && uid) {
+    try {
+      const { data } = await supa.from("kv").select("key,value").eq("user_id", uid);
+      (data || []).forEach((row) => { __cache[row.key] = row.value; });
+    } catch (e) { console.error("hydrate failed", e); }
+  }
+}
+function clearStore() { __uid = null; __cache = null; }
+function loadKey(key, fallback) {
+  if (BACKEND) {
+    if (__cache && Object.prototype.hasOwnProperty.call(__cache, key)) return __cache[key];
+    return fallback;
+  }
+  try { const v = localStorage.getItem(NS + key); return v == null ? fallback : JSON.parse(v); }
+  catch (e) { return fallback; }
+}
+function saveKey(key, value) {
+  if (BACKEND) {
+    if (__cache) __cache[key] = value;
+    if (__uid) {
+      supa.from("kv").upsert({ user_id: __uid, key: key, value: value }, { onConflict: "user_id,key" })
+        .then(({ error }) => { if (error) console.error("save failed", error); });
+    }
+    return;
+  }
+  try { localStorage.setItem(NS + key, JSON.stringify(value)); }
+  catch (e) { console.error("save failed", e); }
+}
+
+/* Free, in-browser AI (WebLLM) — loads lazily, only when used. */
+const LLM_MODEL = "Llama-3.2-3B-Instruct-q4f16_1-MLC";
+let __engine = null, __enginePromise = null;
+const webgpuOK = () => typeof navigator !== "undefined" && !!navigator.gpu;
+async function ensureEngine(onProgress) {
+  if (__engine) return __engine;
+  if (!webgpuOK()) throw new Error("nogpu");
+  if (!__enginePromise) {
+    __enginePromise = import("https://esm.run/@mlc-ai/web-llm")
+      .then((webllm) => webllm.CreateMLCEngine(LLM_MODEL, {
+        initProgressCallback: (r) => { try { if (onProgress) onProgress(r); } catch (e) {} },
+      }))
+      .then((e) => { __engine = e; return e; })
+      .catch((e) => { __enginePromise = null; throw e; });
+  }
+  return __enginePromise;
+}
+
+/* ---------------------------- helpers ---------------------------- */
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const fmtMoney = (n, cur = "USD") => {
+  const sym = CURRENCIES[cur] || "$";
+  const num = Number(n || 0);
+  return sym + num.toLocaleString(undefined, { minimumFractionDigits: num % 1 ? 2 : 0, maximumFractionDigits: 2 });
+};
+const fmtDate = (iso) => {
+  if (!iso) return "—";
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+};
+const effectiveStatus = (d) => {
+  if (d.status === "invoiced" && d.dueDate && d.dueDate < todayISO()) return "overdue";
+  return d.status;
+};
+const workLabel = (v) => (WORK_TYPES.find((w) => w.v === v) || {}).l || v;
+
+// Hash the passcode so it isn't stored in plain text. Note: this is a
+// convenience lock for local app data, not a substitute for server-side auth.
+async function hashPw(pw) {
+  try {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pw));
+    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  } catch (e) {
+    let h = 0;
+    for (let i = 0; i < pw.length; i++) { h = (h << 5) - h + pw.charCodeAt(i); h |= 0; }
+    return "f" + (h >>> 0).toString(16);
+  }
+}
+const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
+
+/* ================================================================ */
+function App() {
+  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState(null);
+  const [deals, setDeals] = useState([]);
+  const [tab, setTab] = useState("ledger");
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [editing, setEditing] = useState(null);     // deal object or {} for new
+  const [invoiceFor, setInvoiceFor] = useState(null);
+  const [showProfile, setShowProfile] = useState(false);
+  const [royalties, setRoyalties] = useState([]);
+  const [royaltyEditing, setRoyaltyEditing] = useState(null);
+  const [account, setAccount] = useState(null);   // { email, name, passwordHash }
+  const [session, setSession] = useState(false);  // signed in this device
+  const [estRates, setEstRates] = useState(DEFAULT_RATES);
+  const [estShare, setEstShare] = useState(100);
+  const [contractText, setContractText] = useState("");
+  const [contractResult, setContractResult] = useState(null);
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [justRegistered, setJustRegistered] = useState(false);
+  const [authMode, setAuthMode] = useState("landing");  // landing | login | register
+  const [recovery, setRecovery] = useState(false);
+
+  const refreshFromStore = () => {
+    setProfile(loadKey("producerProfile", null));
+    setDeals(loadKey("deals", []));
+    setRoyalties(loadKey("royalties", []));
+    setEstRates({ ...DEFAULT_RATES, ...loadKey("estimatorRates", DEFAULT_RATES) });
+    setEstShare(loadKey("estimatorShare", 100));
+  };
+
+  useEffect(() => {
+    (async () => {
+      if (BACKEND) {
+        try {
+          const { data } = await supa.auth.getSession();
+          const sess = data && data.session;
+          if (sess && sess.user) {
+            await hydrateStore(sess.user.id);
+            setAccount({ email: sess.user.email, name: (sess.user.user_metadata && sess.user.user_metadata.name) || "" });
+            setSession(true);
+          }
+        } catch (e) { console.error(e); }
+      } else {
+        const acc = loadKey("authAccount", null);
+        const sess = loadKey("authSession", false);
+        setAccount(acc);
+        setSession(Boolean(sess) && Boolean(acc));
+      }
+      refreshFromStore();
+      setLoading(false);
+    })();
+    if (BACKEND) {
+      const out = supa.auth.onAuthStateChange((event) => { if (event === "PASSWORD_RECOVERY") setRecovery(true); });
+      return () => { try { out.data.subscription.unsubscribe(); } catch (e) {} };
+    }
+  }, []);
+
+  const updateRates = (next) => { setEstRates(next); saveKey("estimatorRates", next); };
+  const updateShare = (v) => { setEstShare(v); saveKey("estimatorShare", v); };
+
+  const onRegister = async ({ name, email, password }) => {
+    if (BACKEND) {
+      const { error } = await supa.auth.signUp({ email: email.trim(), password: password, options: { data: { name: name } } });
+      if (error) return error.message;
+      setPendingEmail(email.trim());
+      setJustRegistered(true);
+      setAuthMode("login");
+      return null;
+    }
+    const passwordHash = await hashPw(password);
+    const acc = { name, email: email.trim(), passwordHash, createdAt: Date.now() };
+    const p = profile
+      ? { ...profile, producerName: profile.producerName || name, email: profile.email || email.trim() }
+      : { producerName: name, businessName: "", email: email.trim(), currency: "USD", paymentDetails: "" };
+    setProfile(p); saveKey("producerProfile", p);
+    setPendingEmail(email.trim());
+    setJustRegistered(true);
+    setSession(false); saveKey("authSession", false);
+    setAccount(acc); saveKey("authAccount", acc);
+    setAuthMode("login");
+    return null;
+  };
+  const onLogin = async ({ email, password, remember }) => {
+    if (BACKEND) {
+      const { data, error } = await supa.auth.signInWithPassword({ email: email.trim(), password: password });
+      if (error) return error.message;
+      const u = data.user;
+      await hydrateStore(u.id);
+      if (!loadKey("producerProfile", null)) {
+        saveKey("producerProfile", { producerName: (u.user_metadata && u.user_metadata.name) || "", businessName: "", email: u.email, currency: "USD", paymentDetails: "" });
+      }
+      refreshFromStore();
+      setAccount({ email: u.email, name: (u.user_metadata && u.user_metadata.name) || "" });
+      setJustRegistered(false);
+      setSession(true);
+      return null;
+    }
+    if (!account) return "No account found on this device.";
+    const h = await hashPw(password);
+    if (email.trim().toLowerCase() !== account.email.toLowerCase() || h !== account.passwordHash)
+      return "Email or password doesn't match.";
+    setJustRegistered(false);
+    setSession(true); saveKey("authSession", Boolean(remember));
+    return null;
+  };
+  const onLogout = async () => {
+    if (BACKEND) { try { await supa.auth.signOut(); } catch (e) {} clearStore(); }
+    else { saveKey("authSession", false); }
+    setSession(false); setAuthMode("login");
+  };
+  const onForgot = async (email) => {
+    if (BACKEND) {
+      if (!validEmail(email || "")) return "Type your email above first, then tap Forgot password.";
+      const { error } = await supa.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.href });
+      if (error) return error.message;
+      return "Check your email for a password reset link.";
+    }
+    setAccount(null); setSession(false); setAuthMode("landing");
+    saveKey("authAccount", null); saveKey("authSession", false);
+    return "";
+  };
+  const onSetNewPassword = async (pw) => {
+    if (!BACKEND) return "Cloud accounts aren't set up.";
+    const { error } = await supa.auth.updateUser({ password: pw });
+    if (error) return error.message;
+    setRecovery(false);
+    return null;
+  };
+
+  const persistRoyalties = useCallback((next) => { setRoyalties(next); saveKey("royalties", next); }, []);
+  const saveRoyalty = (r) => {
+    const exists = royalties.some((x) => x.id === r.id);
+    const next = exists ? royalties.map((x) => (x.id === r.id ? r : x)) : [r, ...royalties];
+    persistRoyalties(next);
+    setRoyaltyEditing(null);
+  };
+  const removeRoyalty = (id) => persistRoyalties(royalties.filter((x) => x.id !== id));
+
+  const persistDeals = useCallback((next) => { setDeals(next); saveKey("deals", next); }, []);
+  const saveDeal = (deal) => {
+    const exists = deals.some((x) => x.id === deal.id);
+    const next = exists ? deals.map((x) => (x.id === deal.id ? deal : x))
+                        : [{ ...deal, createdAt: Date.now() }, ...deals];
+    persistDeals(next);
+    setEditing(null);
+  };
+  const removeDeal = (id) => persistDeals(deals.filter((x) => x.id !== id));
+  const markPaid = (id) =>
+    persistDeals(deals.map((x) => (x.id === id ? { ...x, status: "paid", paidDate: todayISO() } : x)));
+
+  const metrics = useMemo(() => {
+    let outstanding = 0, overdueSum = 0, overdueCount = 0, paid = 0, pipeline = 0;
+    for (const d of deals) {
+      const s = effectiveStatus(d);
+      const fee = Number(d.fee || 0);
+      if (s === "invoiced" || s === "overdue") outstanding += fee;
+      if (s === "overdue") { overdueSum += fee; overdueCount++; }
+      if (s === "paid") paid += fee;
+      if (s === "lead" || s === "in_progress" || s === "delivered") pipeline += fee;
+    }
+    return { outstanding, overdueSum, overdueCount, paid, pipeline };
+  }, [deals]);
+
+  const visibleDeals = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return deals
+      .filter((d) => {
+        const s = effectiveStatus(d);
+        if (filter === "all") return true;
+        if (filter === "open") return s !== "paid";
+        return s === filter;
+      })
+      .filter((d) => !q ||
+        (d.clientName || "").toLowerCase().includes(q) ||
+        (d.projectName || "").toLowerCase().includes(q))
+      .sort((a, b) => {
+        const rank = (d) => (effectiveStatus(d) === "overdue" ? 0 : effectiveStatus(d) === "invoiced" ? 1 : 2);
+        return rank(a) - rank(b) || (b.createdAt || 0) - (a.createdAt || 0);
+      });
+  }, [deals, query, filter]);
+
+  const cur = profile?.currency || "USD";
+
+  if (loading)
+    return (
+      <div style={{ background: C.bg, color: C.faint, fontFamily: FONT_MONO, minHeight: "100vh" }}
+        className="flex items-center justify-center text-sm">
+        loading Producer Desk…
+      </div>
+    );
+
+  if (recovery)
+    return <RecoveryScreen onSet={onSetNewPassword} onCancel={() => setRecovery(false)} />;
+  if (!session)
+    return <AuthScreen key={authMode} mode={authMode} setMode={setAuthMode} account={account}
+      defaultEmail={pendingEmail} justRegistered={justRegistered} backend={BACKEND}
+      onRegister={onRegister} onLogin={onLogin} onForgot={onForgot} />;
+
+  return (
+    <div style={{ background: C.bg, color: C.ink, fontFamily: FONT_UI, minHeight: "100vh" }}>
+      <PrintStyles />
+
+      {/* ---------------- top bar ---------------- */}
+      <header style={{ borderBottom: `1px solid ${C.line}`, background: C.panel }}
+        className="px-4 py-3 flex items-center justify-between gap-3 sticky top-0 z-20" data-noprint>
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div style={{ background: C.amber, color: C.bg }}
+            className="w-8 h-8 rounded-md flex items-center justify-center shrink-0">
+            <Disc3 size={18} strokeWidth={2.2} />
+          </div>
+          <div className="min-w-0">
+            <div style={{ letterSpacing: "0.14em", fontSize: 13 }} className="font-semibold uppercase truncate">
+              Producer Desk
+            </div>
+            <div style={{ color: C.faint, fontSize: 10, letterSpacing: "0.1em" }} className="uppercase truncate">
+              {profile?.producerName || "Producer ledger"}
+            </div>
+          </div>
+        </div>
+        <button onClick={() => setShowProfile(true)}
+          style={{ color: C.dim, border: `1px solid ${C.line}` }}
+          className="p-2 rounded-md hover:opacity-80 shrink-0" aria-label="Settings">
+          <Settings size={16} />
+        </button>
+      </header>
+
+      {/* ---------------- master readout ---------------- */}
+      <section className="px-4 pt-4" data-noprint>
+        <div className="grid grid-cols-3 gap-2">
+          <Readout label="Outstanding" value={fmtMoney(metrics.outstanding, cur)} accent={C.amber} />
+          <Readout label="Overdue" value={fmtMoney(metrics.overdueSum, cur)} accent={C.red}
+            sub={metrics.overdueCount ? `${metrics.overdueCount} late` : "all clear"} />
+          <Readout label="Collected" value={fmtMoney(metrics.paid, cur)} accent={C.green} />
+        </div>
+        <div style={{ color: C.faint, fontFamily: FONT_MONO, fontSize: 11 }} className="mt-2 px-0.5">
+          pipeline (unbilled) · {fmtMoney(metrics.pipeline, cur)}
+        </div>
+      </section>
+
+      {/* ---------------- tabs ---------------- */}
+      <nav className="px-4 pt-4 flex gap-1 overflow-x-auto" data-noprint>
+        {[["ledger", "Ledger", Wallet], ["earnings", "Earnings", TrendingUp], ["royalties", "Royalties", Sliders], ["estimate", "Estimate", Calculator], ["grow", "Grow", Youtube], ["contract", "Contract helper", Sparkles]].map(([k, l, Icon]) => (
+          <button key={k} onClick={() => setTab(k)}
+            style={{
+              background: tab === k ? C.panel : "transparent",
+              color: tab === k ? C.ink : C.faint,
+              border: `1px solid ${tab === k ? C.line : "transparent"}`,
+              borderBottom: "none",
+            }}
+            className="px-3 py-2 rounded-t-md text-sm flex items-center gap-1.5 font-medium whitespace-nowrap shrink-0">
+            <Icon size={14} /> {l}
+          </button>
+        ))}
+      </nav>
+
+      <main style={{ borderTop: `1px solid ${C.line}` }} className="px-4 pt-4 pb-28">
+        {tab === "ledger" ? (
+          <>
+            {/* search + filter */}
+            <div className="flex gap-2 mb-3" data-noprint>
+              <div style={{ background: C.panel, border: `1px solid ${C.line}` }}
+                className="flex items-center gap-2 px-3 rounded-md flex-1 min-w-0">
+                <Search size={15} style={{ color: C.faint }} />
+                <input value={query} onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search client or track"
+                  style={{ background: "transparent", color: C.ink, fontSize: 14 }}
+                  className="py-2.5 outline-none w-full" />
+                {query && <button onClick={() => setQuery("")}><X size={14} style={{ color: C.faint }} /></button>}
+              </div>
+            </div>
+            <FilterRow filter={filter} setFilter={setFilter} deals={deals} />
+
+            {visibleDeals.length === 0 ? (
+              <EmptyState onAdd={() => setEditing({})} hasDeals={deals.length > 0} />
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                {visibleDeals.map((d) => (
+                  <DealCard key={d.id} deal={d} cur={cur}
+                    onEdit={() => setEditing(d)}
+                    onInvoice={() => setInvoiceFor(d)}
+                    onPaid={() => markPaid(d.id)}
+                    onDelete={() => removeDeal(d.id)} />
+                ))}
+              </div>
+            )}
+          </>
+        ) : tab === "earnings" ? (
+          <EarningsView deals={deals} royalties={royalties} cur={cur}
+            onAdd={() => setRoyaltyEditing({})}
+            onEdit={(r) => setRoyaltyEditing(r)}
+            onDelete={removeRoyalty} />
+        ) : tab === "estimate" ? (
+          <StreamEstimator cur={cur} rates={estRates} share={estShare}
+            onRates={updateRates} onShare={updateShare} />
+        ) : tab === "grow" ? (
+          <GrowChannel />
+        ) : tab === "contract" ? (
+          <ContractReader text={contractText} setText={setContractText}
+            result={contractResult} setResult={setContractResult} />
+        ) : (
+          <div className="flex flex-col gap-6">
+            <RoyaltiesGuide />
+            <SplitsRegister deals={deals} />
+          </div>
+        )}
+      </main>
+
+      {/* ---------------- add button ---------------- */}
+      {(tab === "ledger" || tab === "earnings") && (
+        <button onClick={() => (tab === "earnings" ? setRoyaltyEditing({}) : setEditing({}))}
+          style={{ background: C.amber, color: C.bg, boxShadow: "0 6px 20px rgba(0,0,0,0.45)" }}
+          className="fixed bottom-5 right-5 z-30 rounded-full px-5 py-3.5 font-semibold flex items-center gap-2"
+          data-noprint>
+          <Plus size={18} strokeWidth={2.5} /> {tab === "earnings" ? "Log royalty" : "New deal"}
+        </button>
+      )}
+
+      {/* ---------------- modals ---------------- */}
+      {editing && (
+        <DealEditor deal={editing} cur={cur} onSave={saveDeal} onClose={() => setEditing(null)} />
+      )}
+      {royaltyEditing && (
+        <RoyaltyEditor entry={royaltyEditing} cur={cur} onSave={saveRoyalty} onClose={() => setRoyaltyEditing(null)} />
+      )}
+      {invoiceFor && (
+        <InvoiceView deal={invoiceFor} profile={profile} cur={cur} onClose={() => setInvoiceFor(null)} />
+      )}
+      {showProfile && (
+        <ProfileEditor profile={profile} account={account} onLogout={onLogout}
+          onClose={() => profile && setShowProfile(false)}
+          onSave={(p) => { setProfile(p); saveKey("producerProfile", p); setShowProfile(false); }} />
+      )}
+    </div>
+  );
+}
+
+/* ============================ pieces ============================= */
+
+function GrowSection({ title, items }) {
+  const [open, setOpen] = useState(null);
+  return (
+    <div>
+      <div style={{ color: C.dim, fontSize: 11, letterSpacing: "0.1em" }} className="uppercase font-semibold mb-2">{title}</div>
+      <div className="flex flex-col gap-2">
+        {items.map((s, i) => {
+          const Icon = s.icon; const isOpen = open === i;
+          return (
+            <div key={i} style={{ background: C.panel, border: `1px solid ${C.line}` }} className="rounded-md overflow-hidden">
+              <button onClick={() => setOpen(isOpen ? null : i)} className="w-full flex items-center gap-3 px-3.5 py-3 text-left">
+                <div style={{ background: C.raised, color: C.ink }} className="w-9 h-9 rounded-md flex items-center justify-center shrink-0"><Icon size={16} /></div>
+                <div className="flex-1 min-w-0"><div style={{ fontSize: 14 }} className="font-medium">{s.title}</div></div>
+                <ChevronRight size={16} style={{ color: C.faint, transform: isOpen ? "rotate(90deg)" : "none", transition: "transform .15s" }} />
+              </button>
+              {isOpen && (
+                <div style={{ borderTop: `1px solid ${C.line}` }} className="px-3.5 py-3">
+                  <p style={{ color: C.dim, fontSize: 13 }} className="leading-relaxed">{s.body}</p>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ProPlaybook() {
+  const [copied, setCopied] = useState(-1);
+  const tpls = [
+    { label: "Title template", text: '{Artist} Type Beat "{Name}" | {Genre} Type Beat {Year}' },
+    { label: "Description template", text: "🎧 Lease / exclusive: {store link}\nBPM {bpm} · Key {key}\nFor {artist}-type artists.\n📩 Contact: {email}\nFree for non-profit use with credit: (prod. {you}) — tag me." },
+    { label: "Tags template", text: "{artist} type beat, {artist} type beat {year}, {genre} type beat, {mood} type beat, free {artist} type beat, type beat, {you}" },
+  ];
+  const plan = [
+    "Week 1 — Pick 3 trending artists in your lane. Make one beat a day; batch-record 5 short hooks.",
+    "Week 2 — Upload daily at the same time. Lock a thumbnail template and your title formula.",
+    "Week 3 — Build playlists by artist/mood; add end screens and a pinned comment with your store link.",
+    "Week 4 — Double down on your best performer: remix the idea, refresh titles, push Shorts to the full beats.",
+  ];
+  const copy = (t, i) => { try { navigator.clipboard.writeText(t); setCopied(i); setTimeout(() => setCopied(-1), 1200); } catch (e) {} };
+  return (
+    <div className="flex flex-col gap-3">
+      {tpls.map((t, i) => (
+        <div key={i} style={{ background: C.panel, border: `1px solid ${C.line}` }} className="rounded-md p-3.5">
+          <div className="flex items-center justify-between mb-1.5">
+            <span style={{ color: C.faint, fontSize: 10.5, letterSpacing: "0.06em" }} className="uppercase">{t.label}</span>
+            <button onClick={() => copy(t.text, i)} style={{ color: copied === i ? C.ink : C.dim, fontSize: 12 }} className="flex items-center gap-1">
+              {copied === i ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy</>}
+            </button>
+          </div>
+          <pre style={{ background: C.bg, border: `1px solid ${C.line}`, color: C.ink, fontFamily: FONT_MONO, fontSize: 12, whiteSpace: "pre-wrap" }} className="rounded p-2.5 leading-relaxed">{t.text}</pre>
+        </div>
+      ))}
+      <div style={{ background: C.panel, border: `1px solid ${C.line}` }} className="rounded-md p-3.5">
+        <div style={{ color: C.faint, fontSize: 10.5, letterSpacing: "0.06em" }} className="uppercase mb-2">30-day plan</div>
+        <ul className="flex flex-col gap-2">
+          {plan.map((p, i) => (
+            <li key={i} style={{ fontSize: 13 }} className="flex gap-2">
+              <span style={{ color: C.faint, fontFamily: FONT_MONO }}>{i + 1}</span>
+              <span style={{ color: C.dim }}>{p}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function GrowChannel() {
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <h2 style={{ fontSize: 16 }} className="font-semibold mb-1 flex items-center gap-1.5">
+          <Youtube size={17} /> Grow your beat channel
+        </h2>
+        <p style={{ color: C.dim, fontSize: 13 }} className="leading-relaxed">
+          How the YouTube "type beat" algorithm actually rewards producers — and how to turn views into a real audience.
+        </p>
+      </div>
+      <GrowSection title="Type-beat algorithm" items={TYPE_BEAT_TACTICS} />
+      <GrowSection title="Grow your channel" items={CHANNEL_GROWTH} />
+      <div>
+        <div style={{ color: C.dim, fontSize: 11, letterSpacing: "0.1em" }} className="uppercase font-semibold mb-2">Playbook</div>
+        <ProPlaybook />
+      </div>
+    </div>
+  );
+}
+
+function RecoveryScreen({ onSet, onCancel }) {
+  const [pw, setPw] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    if (pw.length < 6) { setErr("Use at least 6 characters."); return; }
+    setBusy(true); const e = await onSet(pw); setBusy(false);
+    if (e) setErr(e);
+  };
+  return (
+    <div style={{ background: C.bg, color: C.ink, fontFamily: FONT_UI, minHeight: "100vh" }} className="flex flex-col items-center justify-center px-5 py-10">
+      <div className="w-full" style={{ maxWidth: 380 }}>
+        <div style={{ background: C.panel, border: "1px solid " + C.line }} className="rounded-xl p-5">
+          <h1 style={{ fontSize: 17 }} className="font-semibold mb-1">Set a new password</h1>
+          <p style={{ color: C.dim, fontSize: 13 }} className="mb-4">Choose a new password for your account.</p>
+          <input value={pw} onChange={(e) => setPw(e.target.value)} type="password" placeholder="New password"
+            style={{ background: C.bg, border: "1px solid " + C.line, color: C.ink, fontSize: 14 }} className="w-full rounded-md px-3 py-2.5 outline-none" />
+          {err && <div style={{ color: C.red, fontSize: 12.5 }} className="mt-2">{err}</div>}
+          <button onClick={submit} disabled={busy} style={{ background: C.amber, color: C.bg, opacity: busy ? 0.7 : 1 }} className="w-full py-3 rounded-md font-semibold mt-4">
+            {busy ? "Saving…" : "Save password"}
+          </button>
+          <button onClick={onCancel} style={{ color: C.faint, fontSize: 12.5 }} className="w-full mt-3">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AuthScreen({ mode, setMode, account, defaultEmail, justRegistered, backend, onRegister, onLogin, onForgot }) {
+  const isRegister = mode === "register";
+  const isLanding = mode === "landing";
+  const hasAccount = !!account;
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState(defaultEmail || "");
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [remember, setRemember] = useState(true);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  const submit = async () => {
+    setErr("");
+    if (isRegister) {
+      if (!name.trim()) return setErr("Add your name or producer name.");
+      if (!validEmail(email)) return setErr("Enter a valid email.");
+      if (pw.length < 6) return setErr("Use at least 6 characters for your password.");
+      if (pw !== pw2) return setErr("Passwords don't match.");
+      setBusy(true);
+      const er = await onRegister({ name: name.trim(), email, password: pw });
+      setBusy(false);
+      if (er) setErr(er);
+    } else {
+      if (!email.trim() || !pw) return setErr("Enter your email and password.");
+      setBusy(true);
+      const e = await onLogin({ email, password: pw, remember });
+      setBusy(false);
+      if (e) setErr(e);
+    }
+  };
+  const onKey = (e) => { if (e.key === "Enter") submit(); };
+
+  return (
+    <div style={{ background: C.bg, color: C.ink, fontFamily: FONT_UI, minHeight: "100vh" }}
+      className="flex flex-col items-center justify-center px-5 py-10">
+      <div className="w-full" style={{ maxWidth: 380 }}>
+        {/* wordmark */}
+        <div className="flex flex-col items-center mb-7">
+          <div style={{ background: C.amber, color: C.bg }} className="w-12 h-12 rounded-xl flex items-center justify-center mb-3">
+            <Disc3 size={26} strokeWidth={2.2} />
+          </div>
+          <div style={{ letterSpacing: "0.18em", fontSize: 17 }} className="font-bold uppercase">Producer Desk</div>
+          <div style={{ color: C.faint, fontSize: 12, letterSpacing: "0.08em" }} className="uppercase mt-1">
+            Get paid for the music
+          </div>
+        </div>
+
+        <div style={{ background: C.panel, border: `1px solid ${C.line}` }} className="rounded-xl p-5">
+          {isLanding ? (
+            <>
+              <h1 style={{ fontSize: 17 }} className="font-semibold mb-1">{hasAccount ? "Welcome back" : "Welcome"}</h1>
+              <p style={{ color: C.dim, fontSize: 13 }} className="mb-4">
+                {hasAccount ? "Log in to pick up where you left off." : "Log in or create an account to get started."}
+              </p>
+              <div className="flex flex-col gap-2">
+                <button onClick={() => setMode("login")}
+                  style={{ background: hasAccount ? C.amber : "transparent", color: hasAccount ? C.bg : C.ink, border: hasAccount ? "none" : `1px solid ${C.line}` }}
+                  className="w-full py-3 rounded-md font-semibold">Log in</button>
+                <button onClick={() => setMode("register")}
+                  style={{ background: hasAccount ? "transparent" : C.amber, color: hasAccount ? C.ink : C.bg, border: hasAccount ? `1px solid ${C.line}` : "none" }}
+                  className="w-full py-3 rounded-md font-semibold">Create account</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <button onClick={() => setMode("landing")} style={{ color: C.faint, fontSize: 12.5 }} className="flex items-center gap-1 mb-3" type="button">
+                <ChevronRight size={14} style={{ transform: "rotate(180deg)" }} /> Back
+              </button>
+          {!isRegister && justRegistered && (
+            <div style={{ background: C.greenSoft, border: `1px solid ${C.line}`, color: C.green, fontSize: 12.5 }}
+              className="rounded-md px-3 py-2 mb-3 flex items-center gap-1.5">
+              <Check size={14} /> Account created — log in to continue.
+            </div>
+          )}
+          <h1 style={{ fontSize: 17 }} className="font-semibold mb-1">
+            {isRegister ? "Create your account" : "Welcome back"}
+          </h1>
+          <p style={{ color: C.dim, fontSize: 13 }} className="mb-4">
+            {isRegister ? "Set up Producer Desk — you'll sign in with these details next."
+              : `Signed up as ${account?.email || "your account"}.`}
+          </p>
+
+          <div className="flex flex-col gap-3">
+            {isRegister && (
+              <AuthField icon={User} label="Name / producer name">
+                <AuthInput value={name} onChange={setName} placeholder="Prod. by you" onKey={onKey} autoFocus />
+              </AuthField>
+            )}
+            <AuthField icon={Mail} label="Email">
+              <AuthInput value={email} onChange={setEmail} placeholder="you@studio.com" type="email" onKey={onKey}
+                autoFocus={!isRegister} />
+            </AuthField>
+            <AuthField icon={Lock} label="Password">
+              <div className="relative">
+                <AuthInput value={pw} onChange={setPw} placeholder={isRegister ? "At least 6 characters" : "Your password"}
+                  type={showPw ? "text" : "password"} onKey={onKey} />
+                <button onClick={() => setShowPw((s) => !s)} style={{ color: C.faint }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1" aria-label="Toggle password">
+                  {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            </AuthField>
+            {isRegister && (
+              <AuthField icon={Lock} label="Confirm password">
+                <AuthInput value={pw2} onChange={setPw2} placeholder="Re-enter password"
+                  type={showPw ? "text" : "password"} onKey={onKey} />
+              </AuthField>
+            )}
+          </div>
+
+          {!isRegister && (
+            <button onClick={() => setRemember((r) => !r)} className="flex items-center gap-2 mt-3.5" type="button">
+              <span style={{
+                background: remember ? C.amber : "transparent",
+                border: `1px solid ${remember ? C.amber : C.line}`,
+                color: C.bg, width: 18, height: 18,
+              }} className="rounded flex items-center justify-center shrink-0">
+                {remember && <Check size={13} strokeWidth={3} />}
+              </span>
+              <span style={{ color: C.dim, fontSize: 13 }}>Keep me signed in</span>
+            </button>
+          )}
+
+          {err && (
+            <div style={{ color: C.red, fontSize: 12.5 }} className="flex items-center gap-1.5 mt-3">
+              <AlertTriangle size={14} /> {err}
+            </div>
+          )}
+
+          <button onClick={submit} disabled={busy}
+            style={{ background: C.amber, color: C.bg, opacity: busy ? 0.7 : 1 }}
+            className="w-full py-3 rounded-md font-semibold mt-4">
+            {busy ? "One sec…" : isRegister ? "Create account" : "Log in"}
+          </button>
+
+          {!isRegister && (
+            <div className="mt-3 text-center">
+              <button onClick={async () => { setErr(""); setNotice(""); const m = await onForgot(email); if (m) setNotice(m); }}
+                style={{ color: C.faint, fontSize: 12.5 }} type="button">
+                Forgot password?
+              </button>
+            </div>
+          )}
+          {notice && (
+            <div style={{ color: C.green, fontSize: 12.5 }} className="flex items-center justify-center gap-1.5 mt-2 text-center">
+              <Check size={13} /> {notice}
+            </div>
+          )}
+            </>
+          )}
+        </div>
+
+        <div style={{ color: C.faint, fontSize: 11 }} className="flex items-start gap-1.5 mt-4 px-1 leading-relaxed">
+          <ShieldCheck size={13} className="mt-0.5 shrink-0" />
+          <span>
+            {backend
+              ? "Your account lives securely in the cloud — log in from any device and reset your password by email."
+              : "This login locks your data on this device only. Add cloud accounts (see README) to sign in anywhere and reset by email."}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AuthField({ icon: Icon, label, children }) {
+  return (
+    <label className="block">
+      <span style={{ color: C.dim, fontSize: 11, letterSpacing: "0.06em" }} className="uppercase flex items-center gap-1.5 mb-1.5">
+        <Icon size={12} /> {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+function AuthInput({ value, onChange, placeholder, type = "text", onKey, autoFocus }) {
+  return (
+    <input type={type} value={value} placeholder={placeholder} autoFocus={autoFocus}
+      onChange={(e) => onChange(e.target.value)} onKeyDown={onKey}
+      style={{ background: C.bg, border: `1px solid ${C.line}`, color: C.ink, fontSize: 14 }}
+      className="w-full rounded-md px-3 py-2.5 outline-none" />
+  );
+}
+
+function Readout({ label, value, accent, sub }) {
+  return (
+    <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderTop: `2px solid ${accent}` }}
+      className="rounded-md px-3 py-2.5">
+      <div style={{ color: C.faint, fontSize: 9.5, letterSpacing: "0.12em" }} className="uppercase">{label}</div>
+      <div style={{ color: accent, fontFamily: FONT_MONO, fontSize: 16 }} className="font-semibold mt-1 leading-none truncate">
+        {value}
+      </div>
+      {sub && <div style={{ color: C.faint, fontFamily: FONT_MONO, fontSize: 9.5 }} className="mt-1 truncate">{sub}</div>}
+    </div>
+  );
+}
+
+function FilterRow({ filter, setFilter, deals }) {
+  const counts = useMemo(() => {
+    const c = { all: deals.length, open: 0, overdue: 0, invoiced: 0, paid: 0 };
+    for (const d of deals) {
+      const s = effectiveStatus(d);
+      if (s !== "paid") c.open++;
+      if (s === "overdue") c.overdue++;
+      if (s === "invoiced") c.invoiced++;
+      if (s === "paid") c.paid++;
+    }
+    return c;
+  }, [deals]);
+  const items = [
+    ["all", "All"], ["open", "Open"], ["overdue", "Overdue"], ["invoiced", "Invoiced"], ["paid", "Paid"],
+  ];
+  return (
+    <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1" data-noprint>
+      {items.map(([k, l]) => {
+        const active = filter === k;
+        const danger = k === "overdue" && counts.overdue > 0;
+        return (
+          <button key={k} onClick={() => setFilter(k)}
+            style={{
+              background: active ? (danger ? C.redSoft : C.raised) : "transparent",
+              color: active ? (danger ? C.red : C.ink) : C.dim,
+              border: `1px solid ${active ? (danger ? C.red : C.line) : C.line}`,
+            }}
+            className="px-3 py-1.5 rounded-full text-xs whitespace-nowrap shrink-0 font-medium">
+            {l}{counts[k] != null && ` · ${counts[k]}`}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function DealCard({ deal, cur, onEdit, onInvoice, onPaid, onDelete }) {
+  const s = effectiveStatus(deal);
+  const st = STATUSES[s];
+  const [confirm, setConfirm] = useState(false);
+  return (
+    <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderLeft: `3px solid ${st.color}` }}
+      className="rounded-md p-3.5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span style={{ background: st.color, boxShadow: `0 0 7px ${st.color}` }}
+              className="w-1.5 h-1.5 rounded-full shrink-0" />
+            <span style={{ color: st.color, fontSize: 10, letterSpacing: "0.1em" }} className="uppercase font-semibold">
+              {st.l}
+            </span>
+            <span style={{ color: C.faint, fontSize: 10, border: `1px solid ${C.line}` }}
+              className="uppercase px-1.5 py-0.5 rounded">
+              {deal.clientType === "label" ? "Label" : "Artist"}
+            </span>
+          </div>
+          <div className="font-semibold truncate" style={{ fontSize: 15 }}>{deal.clientName || "Untitled client"}</div>
+          <div style={{ color: C.dim, fontSize: 13 }} className="truncate">
+            {deal.projectName || "—"} · {workLabel(deal.workType)}
+          </div>
+        </div>
+        <div className="text-right shrink-0">
+          <div style={{ color: C.ink, fontFamily: FONT_MONO, fontSize: 17 }} className="font-semibold leading-none">
+            {fmtMoney(deal.fee, cur)}
+          </div>
+          <div style={{ color: s === "overdue" ? C.red : C.faint, fontFamily: FONT_MONO, fontSize: 11 }} className="mt-1.5">
+            {s === "paid" ? `paid ${fmtDate(deal.paidDate)}`
+              : deal.dueDate ? `due ${fmtDate(deal.dueDate)}` : "no due date"}
+          </div>
+        </div>
+      </div>
+
+      {/* split faders */}
+      {(deal.masterSplit || deal.publishingSplit) ? (
+        <div className="flex gap-4 mt-3">
+          <Fader label="Master" pct={Number(deal.masterSplit || 0)} />
+          <Fader label="Publishing" pct={Number(deal.publishingSplit || 0)} />
+        </div>
+      ) : null}
+
+      {/* actions */}
+      <div style={{ borderTop: `1px solid ${C.line}` }} className="flex items-center gap-1 mt-3 pt-2.5" data-noprint>
+        {s !== "paid" && (
+          <ActionBtn onClick={onPaid} color={C.green}><Check size={14} /> Paid</ActionBtn>
+        )}
+        <ActionBtn onClick={onInvoice} color={C.amber}><FileText size={14} /> Invoice</ActionBtn>
+        <ActionBtn onClick={onEdit} color={C.dim}><Pencil size={14} /> Edit</ActionBtn>
+        <div className="flex-1" />
+        {confirm ? (
+          <button onClick={onDelete} style={{ color: C.red, fontSize: 12 }} className="px-2 py-1 font-medium">
+            Delete?
+          </button>
+        ) : (
+          <button onClick={() => setConfirm(true)} style={{ color: C.faint }} className="p-1.5 rounded hover:opacity-70">
+            <Trash2 size={15} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Fader({ label, pct }) {
+  const p = Math.max(0, Math.min(100, pct));
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="flex justify-between mb-1">
+        <span style={{ color: C.faint, fontSize: 9.5, letterSpacing: "0.08em" }} className="uppercase">{label}</span>
+        <span style={{ color: C.amber, fontFamily: FONT_MONO, fontSize: 11 }}>{p}%</span>
+      </div>
+      <div style={{ background: C.bg, border: `1px solid ${C.line}` }} className="h-1.5 rounded-full overflow-hidden">
+        <div style={{ width: `${p}%`, background: C.amber }} className="h-full" />
+      </div>
+    </div>
+  );
+}
+
+function ActionBtn({ onClick, color, children }) {
+  return (
+    <button onClick={onClick} style={{ color }} className="px-2 py-1.5 rounded text-xs font-medium flex items-center gap-1 hover:opacity-75">
+      {children}
+    </button>
+  );
+}
+
+function EmptyState({ onAdd, hasDeals }) {
+  return (
+    <div style={{ border: `1px dashed ${C.line}` }} className="rounded-lg py-14 px-6 text-center mt-2">
+      <div style={{ color: C.faint }} className="flex justify-center mb-3"><Disc3 size={32} /></div>
+      <div style={{ color: C.ink }} className="font-semibold">{hasDeals ? "Nothing here" : "No deals yet"}</div>
+      <div style={{ color: C.faint, fontSize: 13 }} className="mt-1 mb-5 max-w-xs mx-auto">
+        {hasDeals ? "Try a different filter or search." : "Log your first deal to start tracking what labels and artists owe you."}
+      </div>
+      {!hasDeals && (
+        <button onClick={onAdd} style={{ background: C.amber, color: C.bg }} className="px-4 py-2.5 rounded-md font-semibold inline-flex items-center gap-2">
+          <Plus size={16} /> Add a deal
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ----------------------- splits register ------------------------ */
+function SplitsRegister({ deals }) {
+  const rows = deals.filter((d) => Number(d.masterSplit) || Number(d.publishingSplit));
+  return (
+    <div>
+      <p style={{ color: C.dim, fontSize: 13 }} className="mb-4 leading-relaxed">
+        Your ownership on each track. Register these with your PRO (ASCAP, BMI, PRS…) and any publishing admin
+        so streaming and performance royalties reach you — not just the upfront fee.
+      </p>
+      {rows.length === 0 ? (
+        <div style={{ border: `1px dashed ${C.line}`, color: C.faint }} className="rounded-lg py-12 text-center text-sm">
+          Add master or publishing % to a deal and it shows up here.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {rows.map((d) => (
+            <div key={d.id} style={{ background: C.panel, border: `1px solid ${C.line}` }} className="rounded-md p-3.5">
+              <div className="font-semibold truncate">{d.projectName || "Untitled track"}</div>
+              <div style={{ color: C.faint, fontSize: 12 }} className="mb-3 truncate">
+                {d.clientName} · {d.clientType === "label" ? "Label" : "Artist"}
+              </div>
+              <div className="flex gap-4">
+                <Fader label="Master" pct={Number(d.masterSplit || 0)} />
+                <Fader label="Publishing" pct={Number(d.publishingSplit || 0)} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* --------------------------- earnings --------------------------- */
+function ymKey(iso) { return iso ? iso.slice(0, 7) : null; }
+function monthLabel(ym) {
+  const [y, m] = ym.split("-");
+  return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString(undefined, { month: "short" });
+}
+
+function EarningsView({ deals, royalties, cur, onAdd, onEdit, onDelete }) {
+  const data = useMemo(() => {
+    const paidDeals = deals.filter((d) => d.status === "paid");
+    const feeTotal = paidDeals.reduce((s, d) => s + Number(d.fee || 0), 0);
+    const royTotal = royalties.reduce((s, r) => s + Number(r.amount || 0), 0);
+    const total = feeTotal + royTotal;
+    const thisYear = String(new Date().getFullYear());
+
+    // by source (fees + each royalty source)
+    const bySource = [{ key: "fees", l: "Production fees", color: FEE_COLOR, amount: feeTotal }];
+    for (const key of Object.keys(ROYALTY_SOURCES)) {
+      const amt = royalties.filter((r) => r.source === key).reduce((s, r) => s + Number(r.amount || 0), 0);
+      if (amt > 0) bySource.push({ key, l: ROYALTY_SOURCES[key].l, color: ROYALTY_SOURCES[key].color, amount: amt });
+    }
+    bySource.sort((a, b) => b.amount - a.amount);
+
+    // last 6 months combined
+    const months = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }
+    const monthly = months.map((ym) => {
+      const f = paidDeals.filter((d) => ymKey(d.paidDate) === ym).reduce((s, d) => s + Number(d.fee || 0), 0);
+      const r = royalties.filter((x) => ymKey(x.date) === ym).reduce((s, x) => s + Number(x.amount || 0), 0);
+      return { ym, label: monthLabel(ym), value: f + r };
+    });
+
+    const yearTotal =
+      paidDeals.filter((d) => (d.paidDate || "").startsWith(thisYear)).reduce((s, d) => s + Number(d.fee || 0), 0) +
+      royalties.filter((r) => (r.date || "").startsWith(thisYear)).reduce((s, r) => s + Number(r.amount || 0), 0);
+
+    return { feeTotal, royTotal, total, yearTotal, bySource, monthly };
+  }, [deals, royalties]);
+
+  const maxMonth = Math.max(1, ...data.monthly.map((m) => m.value));
+  const maxSource = Math.max(1, ...data.bySource.map((s) => s.amount));
+  const sorted = [...royalties].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="grid grid-cols-3 gap-2">
+        <Readout label="Total earned" value={fmtMoney(data.total, cur)} accent={C.green} />
+        <Readout label="This year" value={fmtMoney(data.yearTotal, cur)} accent={C.amber} />
+        <Readout label="Back-end" value={fmtMoney(data.royTotal, cur)} accent={C.blue}
+          sub="royalties vs fees" />
+      </div>
+
+      {/* monthly bars */}
+      <Panel title="Last 6 months">
+        {data.total === 0 ? (
+          <Hint>Mark deals paid and log royalty payments to see your income build here.</Hint>
+        ) : (
+          <div className="flex items-end justify-between gap-2 h-32 pt-2">
+            {data.monthly.map((m) => (
+              <div key={m.ym} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
+                <span style={{ color: C.faint, fontFamily: FONT_MONO, fontSize: 9 }}>
+                  {m.value ? fmtMoney(Math.round(m.value), cur) : ""}
+                </span>
+                <div style={{ height: `${Math.max(2, (m.value / maxMonth) * 100)}%`, background: m.value ? C.amber : C.line, minHeight: 3 }}
+                  className="w-full rounded-sm" />
+                <span style={{ color: C.dim, fontSize: 10 }}>{m.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      {/* by source */}
+      <Panel title="Income by source">
+        {data.bySource.filter((s) => s.amount > 0).length === 0 ? (
+          <Hint>No income recorded yet.</Hint>
+        ) : (
+          <div className="flex flex-col gap-3 pt-1">
+            {data.bySource.filter((s) => s.amount > 0).map((s) => (
+              <div key={s.key}>
+                <div className="flex justify-between items-baseline mb-1">
+                  <span style={{ color: C.ink, fontSize: 12.5 }}>{s.l}</span>
+                  <span style={{ color: C.ink, fontFamily: FONT_MONO, fontSize: 12.5 }}>{fmtMoney(s.amount, cur)}</span>
+                </div>
+                <div style={{ background: C.bg, border: `1px solid ${C.line}` }} className="h-2 rounded-full overflow-hidden">
+                  <div style={{ width: `${(s.amount / maxSource) * 100}%`, background: s.color }} className="h-full" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      {/* logged royalty list */}
+      <Panel title="Logged royalty payments"
+        action={<button onClick={onAdd} style={{ color: C.amber, fontSize: 12 }} className="font-medium flex items-center gap-1"><Plus size={13} /> Log</button>}>
+        {sorted.length === 0 ? (
+          <Hint>Every royalty statement you receive — PRO, MLC, SoundExchange, distributor — log it here so your earnings reflect the back end, not just upfront fees.</Hint>
+        ) : (
+          <div className="flex flex-col gap-2 pt-1">
+            {sorted.map((r) => {
+              const src = ROYALTY_SOURCES[r.source] || ROYALTY_SOURCES.other;
+              return (
+                <div key={r.id} style={{ background: C.bg, border: `1px solid ${C.line}` }}
+                  className="rounded-md px-3 py-2.5 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span style={{ background: src.color }} className="w-2 h-2 rounded-full shrink-0" />
+                      <span style={{ fontSize: 13 }} className="font-medium truncate">{src.l}</span>
+                    </div>
+                    <div style={{ color: C.faint, fontSize: 11, fontFamily: FONT_MONO }} className="mt-0.5 truncate">
+                      {fmtDate(r.date)}{r.note ? ` · ${r.note}` : ""}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span style={{ color: C.green, fontFamily: FONT_MONO, fontSize: 14 }} className="font-semibold">
+                      {fmtMoney(r.amount, cur)}
+                    </span>
+                    <button onClick={() => onEdit(r)} style={{ color: C.faint }} className="p-1.5"><Pencil size={13} /></button>
+                    <button onClick={() => onDelete(r.id)} style={{ color: C.faint }} className="p-1.5"><Trash2 size={13} /></button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+function Panel({ title, action, children }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span style={{ color: C.dim, fontSize: 11, letterSpacing: "0.1em" }} className="uppercase font-semibold">{title}</span>
+        {action}
+      </div>
+      <div style={{ background: C.panel, border: `1px solid ${C.line}` }} className="rounded-md p-3.5">{children}</div>
+    </div>
+  );
+}
+function Hint({ children }) {
+  return <p style={{ color: C.faint, fontSize: 12.5 }} className="leading-relaxed">{children}</p>;
+}
+
+/* ----------------------- royalty editor ------------------------- */
+function RoyaltyEditor({ entry, cur, onSave, onClose }) {
+  const isNew = !entry.id;
+  const [f, setF] = useState({
+    id: entry.id || uid(),
+    source: entry.source || "pro",
+    amount: entry.amount ?? "",
+    date: entry.date || todayISO(),
+    note: entry.note || "",
+  });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const valid = Number(f.amount) > 0;
+  return (
+    <Sheet title={isNew ? "Log royalty payment" : "Edit payment"} onClose={onClose}>
+      <Field label="Source">
+        <Select value={f.source} onChange={(v) => set("source", v)}
+          options={Object.keys(ROYALTY_SOURCES).map((k) => [k, ROYALTY_SOURCES[k].l])} />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={`Amount (${CURRENCIES[cur] || "$"}) *`}>
+          <Input value={f.amount} onChange={(v) => set("amount", v)} placeholder="0.00" type="number" mono autoFocus />
+        </Field>
+        <Field label="Date received">
+          <Input value={f.date} onChange={(v) => set("date", v)} type="date" mono />
+        </Field>
+      </div>
+      <Field label="Note">
+        <Input value={f.note} onChange={(v) => set("note", v)} placeholder="Q1 statement, track name…" />
+      </Field>
+      <div className="flex gap-2 pt-2">
+        <button onClick={onClose} style={{ border: `1px solid ${C.line}`, color: C.dim }} className="flex-1 py-3 rounded-md font-medium">Cancel</button>
+        <button onClick={() => valid && onSave(f)} disabled={!valid}
+          style={{ background: valid ? C.amber : C.raised, color: valid ? C.bg : C.faint }}
+          className="flex-1 py-3 rounded-md font-semibold">{isNew ? "Log it" : "Save"}</button>
+      </div>
+    </Sheet>
+  );
+}
+
+/* --------------------- registration guide ----------------------- */
+const GUIDE_STEPS = [
+  {
+    icon: ScrollText, tag: "Before release",
+    title: "Get a split sheet signed",
+    pays: "Nothing yet — but it's the proof behind every payment below.",
+    body: "On every track, write down who owns what % of the song (publishing) and what % of the recording (master). Get everyone to sign it before the record comes out. No agreed splits = blocked or unpaid royalties later.",
+  },
+  {
+    icon: Radio, tag: "Publishing", link: ["ascap.com / bmi.com", "https://www.ascap.com"],
+    title: "Join a PRO for performance royalties",
+    pays: "Pays when your song is played publicly — radio, TV, venues, and the performance slice of streaming.",
+    body: "Sign up as a songwriter with one PRO (US: ASCAP, BMI, SESAC, GMR · UK: PRS · or your country's society), then register every song you wrote on. Add your publisher share too if you self-publish.",
+  },
+  {
+    icon: Coins, tag: "Publishing", link: ["themlc.com", "https://www.themlc.com"],
+    title: "Register works with The MLC",
+    pays: "US digital mechanical royalties from streams and downloads.",
+    body: "In the US, The MLC collects mechanicals from Spotify, Apple and the rest. Become a member and register your works so those mechanicals route to you, not the unmatched pool. Outside the US, your society or admin covers this.",
+  },
+  {
+    icon: Disc3, tag: "Master", link: ["soundexchange.com", "https://www.soundexchange.com"],
+    title: "Sign up with SoundExchange",
+    pays: "Digital performance royalties on the recording — Pandora, SiriusXM, internet radio.",
+    body: "This is the master side, separate from your PRO. If you own recording points, register as a rights owner (and as a performer if you played on it) to collect non-interactive streaming royalties.",
+  },
+  {
+    icon: TrendingUp, tag: "Master",
+    title: "Collect streaming through the distributor — or the label",
+    pays: "Your master share of Spotify/Apple streams.",
+    body: "If you distribute the track (DistroKid, TuneCore, CD Baby), they pay your master streaming directly. If a label releases it, that money comes from them per your contract — so get your master split and accounting terms in writing.",
+  },
+  {
+    icon: Globe, tag: "Shortcut", link: ["songtrust.com", "https://www.songtrust.com"],
+    title: "Use a publishing admin to go global",
+    pays: "Worldwide publishing you'd otherwise leave on the table.",
+    body: "A publishing administrator (Songtrust, CD Baby Pro, Sentric, Kobalt-type) registers your songs with PROs and mechanical societies across the world and collects for you, taking a commission. Easiest way to stop missing foreign royalties.",
+  },
+  {
+    icon: Hash, tag: "Tracking",
+    title: "Make sure every release has its codes",
+    pays: "No direct money — but without codes, money can't find you.",
+    body: "Each recording needs an ISRC and each song an ISWC. Your distributor usually issues the ISRC; PROs/admins handle the ISWC. These IDs are how plays get matched back to your account.",
+  },
+  {
+    icon: Clapperboard, tag: "Bonus",
+    title: "Don't sleep on sync",
+    pays: "Film, TV, ads and games — often the biggest single cheques.",
+    body: "Sync licensing is negotiated separately for both the master and the song. Keep your splits and metadata clean, and consider a sync agent or library to pitch your catalogue.",
+  },
+];
+
+function RoyaltiesGuide() {
+  const [open, setOpen] = useState(null);
+  return (
+    <div>
+      <div className="mb-3">
+        <h2 style={{ fontSize: 16, letterSpacing: "0.02em" }} className="font-semibold mb-1">Register everything you're owed</h2>
+        <p style={{ color: C.dim, fontSize: 13 }} className="leading-relaxed">
+          A track earns from several places at once. Here's where to sign up so each stream of money actually reaches you.
+          Tap a step for the how-to.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        {GUIDE_STEPS.map((s, i) => {
+          const Icon = s.icon;
+          const isOpen = open === i;
+          return (
+            <div key={i} style={{ background: C.panel, border: `1px solid ${C.line}` }} className="rounded-md overflow-hidden">
+              <button onClick={() => setOpen(isOpen ? null : i)} className="w-full flex items-center gap-3 px-3.5 py-3 text-left">
+                <div style={{ background: C.raised, color: C.amber }} className="w-9 h-9 rounded-md flex items-center justify-center shrink-0">
+                  <Icon size={17} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div style={{ color: C.faint, fontSize: 9.5, letterSpacing: "0.1em" }} className="uppercase">{s.tag}</div>
+                  <div style={{ fontSize: 14 }} className="font-medium truncate">{s.title}</div>
+                </div>
+                <ChevronRight size={16} style={{ color: C.faint, transform: isOpen ? "rotate(90deg)" : "none", transition: "transform .15s" }} />
+              </button>
+              {isOpen && (
+                <div style={{ borderTop: `1px solid ${C.line}` }} className="px-3.5 py-3">
+                  <div style={{ color: C.green, fontSize: 12 }} className="mb-2 flex items-start gap-1.5">
+                    <Coins size={13} className="mt-0.5 shrink-0" /> <span>{s.pays}</span>
+                  </div>
+                  <p style={{ color: C.dim, fontSize: 13 }} className="leading-relaxed">{s.body}</p>
+                  {s.link && (
+                    <a href={s.link[1]} target="_blank" rel="noopener noreferrer"
+                      style={{ color: C.amber, fontSize: 12.5 }} className="inline-flex items-center gap-1.5 mt-2.5 font-medium">
+                      {s.link[0]} <ExternalLink size={12} />
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <p style={{ color: C.faint, fontSize: 11.5 }} className="leading-relaxed mt-3">
+        Org names here are mostly US/UK. In other countries, search "[your country] performing rights organization" and
+        "[your country] mechanical society" for the local equivalents. This is general guidance, not legal advice.
+      </p>
+    </div>
+  );
+}
+
+/* ----------------------- stream estimator ----------------------- */
+function StreamEstimator({ cur, rates, share, onRates, onShare }) {
+  const [streams, setStreams] = useState("");
+  const n = Math.max(0, Number(streams) || 0);
+  const sharePct = Math.max(0, Math.min(100, Number(share) || 0));
+  const setRate = (key, v) => onRates({ ...rates, [key]: v === "" ? "" : Number(v) });
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div>
+        <h2 style={{ fontSize: 16 }} className="font-semibold mb-1">Royalty estimator</h2>
+        <p style={{ color: C.dim, fontSize: 13 }} className="leading-relaxed">
+          Rough payout for a given number of plays on each platform. Edit a rate to match what you actually see.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Streams">
+          <Input value={streams} onChange={setStreams} placeholder="100000" type="number" mono autoFocus />
+        </Field>
+        <Field label="Your master share %" hint="your points">
+          <Input value={share} onChange={(v) => onShare(v === "" ? "" : Number(v))} placeholder="100" type="number" mono />
+        </Field>
+      </div>
+
+      <div className="flex flex-col gap-2.5">
+        {STREAM_PLATFORMS.map((p) => {
+          const rate = rates[p.key] === "" ? 0 : Number(rates[p.key] ?? p.rate);
+          const gross = n * rate;
+          const cut = gross * (sharePct / 100);
+          return (
+            <div key={p.key} style={{ background: C.panel, border: `1px solid ${C.line}`, borderLeft: `3px solid ${p.color}` }}
+              className="rounded-md p-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span style={{ background: p.color }} className="w-2.5 h-2.5 rounded-full shrink-0" />
+                  <span className="font-semibold truncate">{p.name}</span>
+                </div>
+                <div className="text-right">
+                  <div style={{ color: C.ink, fontFamily: FONT_MONO, fontSize: 18 }} className="font-semibold leading-none">
+                    {fmtMoney(gross, cur)}
+                  </div>
+                  <div style={{ color: C.green, fontFamily: FONT_MONO, fontSize: 11 }} className="mt-1">
+                    your cut {fmtMoney(cut, cur)}
+                  </div>
+                </div>
+              </div>
+              <div style={{ borderTop: `1px solid ${C.line}` }} className="flex items-center justify-between gap-2 mt-3 pt-2.5">
+                <span style={{ color: C.faint, fontSize: 11 }} className="uppercase tracking-wide">Rate / stream · {p.range}</span>
+                <div className="flex items-center gap-1">
+                  <span style={{ color: C.faint, fontFamily: FONT_MONO, fontSize: 13 }}>{CURRENCIES[cur] || "$"}</span>
+                  <input value={rates[p.key] ?? p.rate} onChange={(e) => setRate(p.key, e.target.value)}
+                    type="number" step="0.0001"
+                    style={{ background: C.bg, border: `1px solid ${C.line}`, color: C.ink, fontFamily: FONT_MONO, fontSize: 13, width: 92 }}
+                    className="rounded px-2 py-1 outline-none text-right" />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center justify-between">
+        <button onClick={() => onRates(DEFAULT_RATES)}
+          style={{ color: C.dim, border: `1px solid ${C.line}` }}
+          className="px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5">
+          <RotateCcw size={13} /> Reset rates
+        </button>
+        <span style={{ color: C.faint, fontFamily: FONT_MONO, fontSize: 11 }}>
+          {n ? `${n.toLocaleString()} plays` : "enter streams"}
+        </span>
+      </div>
+
+      <p style={{ color: C.faint, fontSize: 11.5 }} className="leading-relaxed">
+        These are rough averages — the same number of plays isn't summed across platforms, it's shown side by side.
+        Real payouts swing with listener country, free vs premium tier, and your distributor's cut. "Your cut" applies
+        your master share only; publishing royalties are separate.
+      </p>
+    </div>
+  );
+}
+
+/* ----------------------- AI contract reader --------------------- */
+const CONTRACT_SYSTEM =
+  "You explain music-industry contracts to producers in plain English. You are NOT a lawyer and do not give legal advice — you summarize and flag points to review. Read the pasted contract and return ONLY minified JSON (no markdown, no code fences, nothing before or after) with this exact shape: " +
+  '{"dealType":string,"summary":string,"keyTerms":[{"label":string,"value":string}],"watchOuts":[string],"questions":[string],"bottomLine":string}. ' +
+  "Rules: plain language a non-lawyer understands; accurate and neutral; summary 2-3 short sentences; max 6 keyTerms covering things like fee/advance, royalty or points, term length, territory, rights granted, master/publishing ownership, exclusivity, and credit; max 5 watchOuts (unusual, vague, or risky clauses); max 4 questions to ask before signing; bottomLine is one sentence. Keep every value short. If the text isn't a contract, set dealType to 'Not a contract' and say so in summary.";
+
+const CONTRACT_NEG_SYSTEM =
+  "You advise music producers on negotiating their own contracts. Based on the contract, suggest specific, realistic points the PRODUCER should push for in their favour. You are NOT a lawyer; these are practical suggestions, not legal advice. Return ONLY minified JSON (no markdown, no code fences): " +
+  '{"negotiation":[{"point":string,"ask":string,"why":string}]}. ' +
+  "point = the term/issue in a few words; ask = the specific change to request; why = the leverage or reason in one short sentence. Max 6 items, ordered by impact (biggest money or rights first). Favour standard, reasonable industry asks (more points, capped term, reversion of rights, kept publishing, guaranteed credit, clear payment timing, audit rights). If nothing is realistically negotiable or it isn't a contract, return an empty array.";
+
+const NEG_TONES = [
+  { v: "collaborative", l: "Collaborative", desc: "warm, partnership-focused" },
+  { v: "firm", l: "Firm but friendly", desc: "polite but clear on the asks" },
+  { v: "direct", l: "Direct", desc: "brief and to the point" },
+];
+function draftSystem(tone) {
+  const t = NEG_TONES.find((x) => x.v === tone) || NEG_TONES[1];
+  return (
+    "You write short, professional negotiation messages a music producer can send to a label or artist about a deal. " +
+    "You are not a lawyer. Tone: " + t.desc + ". Write a ready-to-send message that opens warmly, proposes the requested changes, gives a one-line reason for each, and ends on a positive, deal-friendly note. " +
+    "Plain text only, no markdown, no headings, no bullet characters. Under 200 words. The only placeholders allowed are [Name] and [Your name]."
+  );
+}
+
+function AiBar({ llm }) {
+  const supported = typeof navigator !== "undefined" && !!navigator.gpu;
+  return (
+    <div style={{ background: C.panel, border: "1px solid " + (supported ? C.line : C.amber) }} className="rounded-md p-3.5">
+      <div style={{ color: C.dim, fontSize: 11, letterSpacing: "0.06em" }} className="uppercase font-semibold mb-1 flex items-center gap-1.5">
+        <Sparkles size={12} /> On-device AI · free
+      </div>
+      {!supported ? (
+        <p style={{ color: C.amber, fontSize: 12 }} className="leading-relaxed">
+          Runs entirely in your browser — no key, no sign-up — but it needs WebGPU, which this browser doesn't support. Try Chrome or Edge on desktop.
+        </p>
+      ) : llm.active ? (
+        <>
+          <p style={{ color: C.faint, fontSize: 12 }} className="leading-relaxed mb-2">{llm.text || "Loading the model…"}</p>
+          <div style={{ background: C.bg, border: "1px solid " + C.line }} className="h-2 rounded-full overflow-hidden">
+            <div style={{ width: (Math.round((llm.pct || 0) * 100)) + "%", background: C.amber }} className="h-full" />
+          </div>
+        </>
+      ) : (
+        <p style={{ color: C.faint, fontSize: 12 }} className="leading-relaxed">
+          Free, private, no sign-up — the AI runs on your device. First use downloads a model to your browser (a few hundred MB, cached after), and analysis can take a little while. It's a small model, so treat it as a helpful first read rather than a precise or final word.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ContractReader({ text, setText, result, setResult }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [negBusy, setNegBusy] = useState(false);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [selected, setSelected] = useState({});   // index -> bool
+  const [tone, setTone] = useState("firm");
+  const [copied, setCopied] = useState(false);
+  const [llm, setLlm] = useState({ active: false, text: "", pct: 0 });
+
+  const callClaude = async (system, content) => {
+    const eng = await ensureEngine((r) => setLlm({ active: true, text: r.text || "Preparing the model…", pct: typeof r.progress === "number" ? r.progress : 0 }));
+    setLlm((s) => ({ ...s, active: false }));
+    const reply = await eng.chat.completions.create({
+      messages: [{ role: "system", content: system }, { role: "user", content: content }],
+      temperature: 0.2,
+      max_tokens: 1024,
+    });
+    return ((reply.choices && reply.choices[0] && reply.choices[0].message.content) || "").trim();
+  };
+  const parseJSON = (raw) => {
+    let clean = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
+    const a = clean.indexOf("{"), b = clean.lastIndexOf("}");
+    if (a >= 0 && b > a) clean = clean.slice(a, b + 1);
+    try { return JSON.parse(clean); } catch (e) { return null; }
+  };
+
+  const analyze = async () => {
+    if (text.trim().length < 40) { setError("Paste the full contract text first."); return; }
+    if (!webgpuOK()) { setError("This browser can't run the in-browser AI — it needs WebGPU. Try Chrome or Edge on desktop."); return; }
+    setError(""); setBusy(true); setResult(null); setSelected({});
+    try {
+      const raw = await callClaude(CONTRACT_SYSTEM, text.slice(0, 8000));
+      setResult(parseJSON(raw) || { raw: raw || "No readable response." });
+    } catch (e) { setError(e.message === "nogpu" ? "This browser can't run the AI (needs WebGPU)." : "The on-device model couldn't finish. Reload the page and try again."); }
+    setBusy(false);
+  };
+
+  const suggest = async () => {
+    setError(""); setNegBusy(true);
+    try {
+      const raw = await callClaude(CONTRACT_NEG_SYSTEM, text.slice(0, 8000));
+      const parsed = parseJSON(raw);
+      const negotiation = (parsed && Array.isArray(parsed.negotiation)) ? parsed.negotiation : [];
+      setResult({ ...result, negotiation, draft: undefined });
+      setSelected(negotiation.reduce((o, _, i) => ((o[i] = true), o), {}));
+    } catch (e) { setError(e.message === "nogpu" ? "This browser can't run the AI (needs WebGPU)." : "The on-device model couldn't finish. Try again."); }
+    setNegBusy(false);
+  };
+
+  const draft = async () => {
+    const picks = (result.negotiation || []).filter((_, i) => selected[i]);
+    if (picks.length === 0) { setError("Pick at least one point to negotiate."); return; }
+    setError(""); setDraftBusy(true);
+    try {
+      const ctx =
+        `This is about a ${result.dealType || "music contract"}. The producer wants to negotiate:\n` +
+        picks.map((p) => `- ${p.ask} (because ${p.why})`).join("\n");
+      const msg = await callClaude(draftSystem(tone), ctx);
+      setResult({ ...result, draft: msg });
+    } catch (e) { setError(e.message === "nogpu" ? "This browser can't run the AI (needs WebGPU)." : "The on-device model couldn't finish. Try again."); }
+    setDraftBusy(false);
+  };
+
+  const copyDraft = async () => {
+    try { await navigator.clipboard.writeText(result.draft); setCopied(true); setTimeout(() => setCopied(false), 1500); }
+    catch (e) { /* fall back to manual select */ }
+  };
+
+  const toggle = (i) => setSelected((s) => ({ ...s, [i]: !s[i] }));
+  const hasNeg = result && Array.isArray(result.negotiation);
+  const structured = result && !result.raw;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h2 style={{ fontSize: 16 }} className="font-semibold mb-1 flex items-center gap-1.5">
+          <Sparkles size={16} style={{ color: C.amber }} /> Contract helper
+        </h2>
+        <p style={{ color: C.dim, fontSize: 13 }} className="leading-relaxed">
+          Paste a producer agreement, beat licence, or split sheet. Get it in plain English, then see what to negotiate
+          and draft a reply.
+        </p>
+      </div>
+
+      <AiBar llm={llm} />
+
+      <textarea value={text} onChange={(e) => setText(e.target.value)}
+        rows={7} placeholder="Paste the contract text here…"
+        style={{ background: C.bg, border: `1px solid ${C.line}`, color: C.ink, fontSize: 13.5, lineHeight: 1.5 }}
+        className="w-full rounded-md px-3 py-3 outline-none resize-y" />
+
+      <div className="flex items-center gap-2">
+        <button onClick={analyze} disabled={busy}
+          style={{ background: C.amber, color: C.bg, opacity: busy ? 0.7 : 1 }}
+          className="flex-1 py-3 rounded-md font-semibold flex items-center justify-center gap-2">
+          {busy ? <><Loader2 size={17} className="animate-spin" /> Reading…</> : <><Sparkles size={17} /> Explain this contract</>}
+        </button>
+        {(text || result) && (
+          <button onClick={() => { setText(""); setResult(null); setError(""); setSelected({}); }}
+            style={{ color: C.dim, border: `1px solid ${C.line}` }} className="px-3 py-3 rounded-md">
+            <X size={16} />
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <div style={{ color: C.red, fontSize: 12.5 }} className="flex items-center gap-1.5">
+          <AlertTriangle size={14} /> {error}
+        </div>
+      )}
+
+      {result && <ContractResult result={result} />}
+
+      {/* ---- negotiation suggestions ---- */}
+      {structured && (
+        <div className="flex flex-col gap-3">
+          {!hasNeg ? (
+            <button onClick={suggest} disabled={negBusy}
+              style={{ border: `1px solid ${C.amber}`, color: C.amber, opacity: negBusy ? 0.6 : 1 }}
+              className="py-3 rounded-md font-semibold flex items-center justify-center gap-2">
+              {negBusy ? <><Loader2 size={16} className="animate-spin" /> Thinking…</> : <><Scale size={16} /> Suggest what to negotiate</>}
+            </button>
+          ) : result.negotiation.length === 0 ? (
+            <Panel title="Negotiation"><Hint>No strong negotiation points stood out — or this isn't a contract Claude could read terms from.</Hint></Panel>
+          ) : (
+            <>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span style={{ color: C.dim, fontSize: 11, letterSpacing: "0.1em" }} className="uppercase font-semibold">What to negotiate</span>
+                  <span style={{ color: C.faint, fontSize: 11 }}>tap to include</span>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {result.negotiation.map((p, i) => {
+                    const on = !!selected[i];
+                    return (
+                      <button key={i} onClick={() => toggle(i)}
+                        style={{ background: C.panel, border: `1px solid ${on ? C.amber : C.line}`, textAlign: "left" }}
+                        className="rounded-md p-3.5 flex gap-3">
+                        <span style={{
+                          background: on ? C.amber : "transparent", border: `1px solid ${on ? C.amber : C.line}`,
+                          color: C.bg, width: 18, height: 18,
+                        }} className="rounded flex items-center justify-center shrink-0 mt-0.5">
+                          {on && <Check size={13} strokeWidth={3} />}
+                        </span>
+                        <div className="min-w-0">
+                          <div style={{ fontSize: 13.5 }} className="font-semibold">{p.point}</div>
+                          <div style={{ color: C.ink, fontSize: 13 }} className="mt-0.5 leading-snug">{p.ask}</div>
+                          <div style={{ color: C.faint, fontSize: 12 }} className="mt-1 leading-snug">{p.why}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* draft option */}
+              <div style={{ background: C.panel, border: `1px solid ${C.line}` }} className="rounded-md p-3.5">
+                <div style={{ color: C.dim, fontSize: 11, letterSpacing: "0.08em" }} className="uppercase font-semibold mb-2 flex items-center gap-1.5">
+                  <MessageSquare size={13} /> Draft a negotiation message
+                </div>
+                <div className="flex gap-1.5 mb-3">
+                  {NEG_TONES.map((t) => (
+                    <button key={t.v} onClick={() => setTone(t.v)}
+                      style={{ background: tone === t.v ? C.raised : "transparent", color: tone === t.v ? C.ink : C.faint, border: `1px solid ${C.line}`, fontSize: 12 }}
+                      className="flex-1 py-2 rounded font-medium">{t.l}</button>
+                  ))}
+                </div>
+                <button onClick={draft} disabled={draftBusy}
+                  style={{ background: C.amber, color: C.bg, opacity: draftBusy ? 0.7 : 1 }}
+                  className="w-full py-2.5 rounded-md font-semibold flex items-center justify-center gap-2">
+                  {draftBusy ? <><Loader2 size={16} className="animate-spin" /> Writing…</> : <>{result.draft ? "Redraft message" : "Draft message"}</>}
+                </button>
+
+                {result.draft && (
+                  <div className="mt-3">
+                    <textarea readOnly value={result.draft} rows={9}
+                      style={{ background: C.bg, border: `1px solid ${C.line}`, color: C.ink, fontSize: 13, lineHeight: 1.55 }}
+                      className="w-full rounded-md px-3 py-3 outline-none resize-y" />
+                    <button onClick={copyDraft}
+                      style={{ color: copied ? C.green : C.amber, border: `1px solid ${C.line}` }}
+                      className="mt-2 px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5">
+                      {copied ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy message</>}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      <p style={{ color: C.faint, fontSize: 11.5 }} className="leading-relaxed">
+        Plain-English summaries and practical suggestions — not legal advice. For anything you're unsure about, have a
+        music lawyer review it. Everything runs on your device — your contract text never leaves your browser.
+      </p>
+    </div>
+  );
+}
+
+function ContractResult({ result }) {
+  if (result.raw)
+    return (
+      <div style={{ background: C.panel, border: `1px solid ${C.line}`, whiteSpace: "pre-wrap", color: C.ink, fontSize: 13.5 }}
+        className="rounded-md p-4 leading-relaxed">
+        {result.raw}
+      </div>
+    );
+  const { dealType, summary, keyTerms = [], watchOuts = [], questions = [], bottomLine } = result;
+  return (
+    <div className="flex flex-col gap-4">
+      <div style={{ background: C.panel, border: `1px solid ${C.line}` }} className="rounded-md p-4">
+        {dealType && (
+          <span style={{ background: C.amberSoft, color: C.amber, fontSize: 10.5, letterSpacing: "0.06em" }}
+            className="inline-block uppercase font-semibold px-2 py-1 rounded mb-2">{dealType}</span>
+        )}
+        {summary && <p style={{ color: C.ink, fontSize: 14 }} className="leading-relaxed">{summary}</p>}
+      </div>
+
+      {keyTerms.length > 0 && (
+        <Panel title="Key terms">
+          <div className="flex flex-col gap-2.5 pt-1">
+            {keyTerms.map((t, i) => (
+              <div key={i} style={{ borderBottom: i < keyTerms.length - 1 ? `1px solid ${C.line}` : "none" }} className="pb-2.5 last:pb-0">
+                <div style={{ color: C.faint, fontSize: 10.5, letterSpacing: "0.06em" }} className="uppercase mb-0.5">{t.label}</div>
+                <div style={{ color: C.ink, fontSize: 13.5 }} className="leading-snug">{t.value}</div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {watchOuts.length > 0 && (
+        <Panel title="Watch out for">
+          <ul className="flex flex-col gap-2 pt-1">
+            {watchOuts.map((w, i) => (
+              <li key={i} style={{ color: C.ink, fontSize: 13.5 }} className="flex items-start gap-2 leading-snug">
+                <AlertTriangle size={14} style={{ color: C.red }} className="mt-0.5 shrink-0" /> <span>{w}</span>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
+
+      {questions.length > 0 && (
+        <Panel title="Ask before signing">
+          <ul className="flex flex-col gap-2 pt-1">
+            {questions.map((q, i) => (
+              <li key={i} style={{ color: C.ink, fontSize: 13.5 }} className="flex items-start gap-2 leading-snug">
+                <span style={{ color: C.amber }} className="shrink-0">?</span> <span>{q}</span>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
+
+      {bottomLine && (
+        <div style={{ background: C.greenSoft, border: `1px solid ${C.line}` }} className="rounded-md p-3.5">
+          <div style={{ color: C.green, fontSize: 10.5, letterSpacing: "0.08em" }} className="uppercase font-semibold mb-1">Bottom line</div>
+          <p style={{ color: C.ink, fontSize: 13.5 }} className="leading-relaxed">{bottomLine}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* --------------------------- deal editor ------------------------ */
+function DealEditor({ deal, cur, onSave, onClose }) {
+  const isNew = !deal.id;
+  const [f, setF] = useState({
+    id: deal.id || uid(),
+    clientName: deal.clientName || "",
+    clientType: deal.clientType || "artist",
+    clientEmail: deal.clientEmail || "",
+    projectName: deal.projectName || "",
+    workType: deal.workType || "production",
+    fee: deal.fee ?? "",
+    masterSplit: deal.masterSplit ?? "",
+    publishingSplit: deal.publishingSplit ?? "",
+    status: deal.status || "lead",
+    dueDate: deal.dueDate || "",
+    paidDate: deal.paidDate || "",
+    notes: deal.notes || "",
+    createdAt: deal.createdAt,
+  });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const valid = f.clientName.trim().length > 0;
+
+  return (
+    <Sheet title={isNew ? "New deal" : "Edit deal"} onClose={onClose}>
+      <Field label="Client name *">
+        <Input value={f.clientName} onChange={(v) => set("clientName", v)} placeholder="Atlantic Records / Jane Doe" autoFocus />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Client type">
+          <Segmented options={[["artist", "Artist"], ["label", "Label"]]} value={f.clientType} onChange={(v) => set("clientType", v)} />
+        </Field>
+        <Field label="Work type">
+          <Select value={f.workType} onChange={(v) => set("workType", v)} options={WORK_TYPES.map((w) => [w.v, w.l])} />
+        </Field>
+      </div>
+
+      <Field label="Track / project">
+        <Input value={f.projectName} onChange={(v) => set("projectName", v)} placeholder="Midnight (single)" />
+      </Field>
+
+      <Field label="Client email">
+        <Input value={f.clientEmail} onChange={(v) => set("clientEmail", v)} placeholder="ar@label.com" type="email" />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={`Fee (${CURRENCIES[cur] || "$"})`}>
+          <Input value={f.fee} onChange={(v) => set("fee", v)} placeholder="2500" type="number" mono />
+        </Field>
+        <Field label="Status">
+          <Select value={f.status} onChange={(v) => set("status", v)} options={STATUS_ORDER.map((k) => [k, STATUSES[k].l])} />
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Master split %" hint="your share of the recording">
+          <Input value={f.masterSplit} onChange={(v) => set("masterSplit", v)} placeholder="50" type="number" mono />
+        </Field>
+        <Field label="Publishing split %" hint="your share of the song">
+          <Input value={f.publishingSplit} onChange={(v) => set("publishingSplit", v)} placeholder="50" type="number" mono />
+        </Field>
+      </div>
+
+      <Field label={f.status === "paid" ? "Paid date" : "Payment due"}>
+        <Input value={f.status === "paid" ? f.paidDate : f.dueDate}
+          onChange={(v) => set(f.status === "paid" ? "paidDate" : "dueDate", v)} type="date" mono />
+      </Field>
+
+      <Field label="Notes">
+        <textarea value={f.notes} onChange={(e) => set("notes", e.target.value)}
+          rows={2} placeholder="Deal terms, contract status, who to chase…"
+          style={{ background: C.bg, border: `1px solid ${C.line}`, color: C.ink, fontSize: 14 }}
+          className="w-full rounded-md px-3 py-2.5 outline-none resize-none" />
+      </Field>
+
+      <div className="flex gap-2 pt-2">
+        <button onClick={onClose} style={{ border: `1px solid ${C.line}`, color: C.dim }} className="flex-1 py-3 rounded-md font-medium">
+          Cancel
+        </button>
+        <button onClick={() => valid && onSave(f)} disabled={!valid}
+          style={{ background: valid ? C.amber : C.raised, color: valid ? C.bg : C.faint }}
+          className="flex-1 py-3 rounded-md font-semibold">
+          {isNew ? "Add deal" : "Save"}
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/* --------------------------- invoice ---------------------------- */
+function InvoiceView({ deal, profile, cur, onClose }) {
+  const invNo = useMemo(() =>
+    `INV-${(deal.createdAt ? new Date(deal.createdAt) : new Date()).getFullYear()}-${deal.id.slice(-5).toUpperCase()}`,
+    [deal]);
+  const p = profile || {};
+  return (
+    <Sheet title="Invoice" onClose={onClose} wide
+      footer={
+        <button onClick={() => window.print()} style={{ background: C.amber, color: C.bg }}
+          className="w-full py-3 rounded-md font-semibold flex items-center justify-center gap-2" data-noprint>
+          <Printer size={17} /> Print / Save as PDF
+        </button>
+      }>
+      <div id="invoice-print" style={{ background: "#fff", color: "#1a1a1a", fontFamily: FONT_UI }}
+        className="rounded-lg p-6 print-area">
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <div style={{ letterSpacing: "0.12em", color: "#111" }} className="text-lg font-bold uppercase">
+              {p.businessName || p.producerName || "Your studio"}
+            </div>
+            {p.producerName && p.businessName && <div style={{ color: "#555" }} className="text-sm">{p.producerName}</div>}
+            {p.email && <div style={{ color: "#555" }} className="text-sm">{p.email}</div>}
+          </div>
+          <div className="text-right">
+            <div style={{ color: "#888", letterSpacing: "0.1em" }} className="text-xs uppercase">Invoice</div>
+            <div style={{ fontFamily: FONT_MONO }} className="text-sm font-semibold">{invNo}</div>
+            <div style={{ color: "#888", fontFamily: FONT_MONO }} className="text-xs mt-1">{fmtDate(todayISO())}</div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div>
+            <div style={{ color: "#999", letterSpacing: "0.08em" }} className="text-xs uppercase mb-1">Bill to</div>
+            <div className="font-semibold">{deal.clientName}</div>
+            {deal.clientEmail && <div style={{ color: "#555" }} className="text-sm">{deal.clientEmail}</div>}
+          </div>
+          <div className="text-right">
+            <div style={{ color: "#999", letterSpacing: "0.08em" }} className="text-xs uppercase mb-1">Due</div>
+            <div style={{ fontFamily: FONT_MONO }} className="font-semibold">{fmtDate(deal.dueDate) || "On receipt"}</div>
+          </div>
+        </div>
+
+        <table className="w-full mb-6" style={{ borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ borderBottom: "2px solid #1a1a1a" }}>
+              <th style={{ color: "#666", letterSpacing: "0.06em" }} className="text-left text-xs uppercase py-2">Description</th>
+              <th style={{ color: "#666", letterSpacing: "0.06em" }} className="text-right text-xs uppercase py-2">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
+              <td className="py-3">
+                <div className="font-medium">{workLabel(deal.workType)}</div>
+                {deal.projectName && <div style={{ color: "#777" }} className="text-sm">{deal.projectName}</div>}
+                {(deal.masterSplit || deal.publishingSplit) ? (
+                  <div style={{ color: "#999" }} className="text-xs mt-1">
+                    Splits — master {Number(deal.masterSplit || 0)}% · publishing {Number(deal.publishingSplit || 0)}%
+                  </div>
+                ) : null}
+              </td>
+              <td style={{ fontFamily: FONT_MONO }} className="text-right align-top py-3">{fmtMoney(deal.fee, cur)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div className="flex justify-end mb-6">
+          <div style={{ borderTop: "2px solid #1a1a1a" }} className="w-1/2 pt-2 flex justify-between">
+            <span className="font-bold uppercase text-sm">Total due</span>
+            <span style={{ fontFamily: FONT_MONO }} className="font-bold">{fmtMoney(deal.fee, cur)}</span>
+          </div>
+        </div>
+
+        {p.paymentDetails && (
+          <div style={{ borderTop: "1px solid #e5e5e5" }} className="pt-4">
+            <div style={{ color: "#999", letterSpacing: "0.08em" }} className="text-xs uppercase mb-1">Payment details</div>
+            <div style={{ color: "#444", whiteSpace: "pre-wrap" }} className="text-sm">{p.paymentDetails}</div>
+          </div>
+        )}
+        {!p.paymentDetails && (
+          <div style={{ color: "#bbb" }} className="text-xs italic" data-noprint>
+            Tip: add bank / PayPal details in settings so they appear here.
+          </div>
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
+/* --------------------------- profile ---------------------------- */
+function ProfileEditor({ profile, account, onLogout, onClose, onSave }) {
+  const [f, setF] = useState({
+    producerName: profile?.producerName || "",
+    businessName: profile?.businessName || "",
+    email: profile?.email || "",
+    currency: profile?.currency || "USD",
+    paymentDetails: profile?.paymentDetails || "",
+  });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const valid = f.producerName.trim() || f.businessName.trim();
+  const firstRun = !profile;
+
+  return (
+    <Sheet title={firstRun ? "Set up your desk" : "Settings"} onClose={firstRun ? null : onClose}>
+      {firstRun && (
+        <p style={{ color: C.dim, fontSize: 13 }} className="mb-2 leading-relaxed">
+          This appears on your invoices and sets your default currency. You can change it anytime.
+        </p>
+      )}
+      <Field label="Your name / producer name">
+        <Input value={f.producerName} onChange={(v) => set("producerName", v)} placeholder="Prod. by you" autoFocus />
+      </Field>
+      <Field label="Business name (optional)">
+        <Input value={f.businessName} onChange={(v) => set("businessName", v)} placeholder="Studio LLC" />
+      </Field>
+      <Field label="Email">
+        <Input value={f.email} onChange={(v) => set("email", v)} placeholder="you@studio.com" type="email" />
+      </Field>
+      <Field label="Default currency">
+        <Select value={f.currency} onChange={(v) => set("currency", v)}
+          options={Object.keys(CURRENCIES).map((k) => [k, `${k} ${CURRENCIES[k]}`])} />
+      </Field>
+      <Field label="Payment details" hint="shown on invoices">
+        <textarea value={f.paymentDetails} onChange={(e) => set("paymentDetails", e.target.value)}
+          rows={3} placeholder={"Bank: …\nPayPal: …\nNet 30"}
+          style={{ background: C.bg, border: `1px solid ${C.line}`, color: C.ink, fontSize: 14 }}
+          className="w-full rounded-md px-3 py-2.5 outline-none resize-none" />
+      </Field>
+      <button onClick={() => valid && onSave(f)} disabled={!valid}
+        style={{ background: valid ? C.amber : C.raised, color: valid ? C.bg : C.faint }}
+        className="w-full py-3 rounded-md font-semibold mt-2">
+        {firstRun ? "Start tracking" : "Save settings"}
+      </button>
+
+      {account && (
+        <div style={{ borderTop: `1px solid ${C.line}` }} className="pt-3 mt-1">
+          <div style={{ color: C.faint, fontSize: 11, letterSpacing: "0.06em" }} className="uppercase mb-1">Account</div>
+          <div className="flex items-center justify-between gap-2">
+            <span style={{ color: C.dim, fontSize: 13 }} className="truncate">{account.email}</span>
+            <button onClick={onLogout} style={{ color: C.red, border: `1px solid ${C.line}` }}
+              className="px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 shrink-0">
+              <LogOut size={13} /> Log out
+            </button>
+          </div>
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
+/* --------------------------- primitives ------------------------- */
+function Sheet({ title, onClose, children, footer, wide }) {
+  return (
+    <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center" data-noprint>
+      <div onClick={onClose} style={{ background: "rgba(0,0,0,0.6)" }} className="absolute inset-0" />
+      <div style={{ background: C.panel, border: `1px solid ${C.line}`, maxHeight: "92vh" }}
+        className={`relative w-full ${wide ? "sm:max-w-lg" : "sm:max-w-md"} sm:rounded-xl rounded-t-2xl flex flex-col`}>
+        <div style={{ borderBottom: `1px solid ${C.line}` }} className="flex items-center justify-between px-4 py-3 shrink-0">
+          <span style={{ letterSpacing: "0.06em", fontSize: 13 }} className="uppercase font-semibold">{title}</span>
+          {onClose && <button onClick={onClose} style={{ color: C.faint }} className="p-1"><X size={18} /></button>}
+        </div>
+        <div className="overflow-y-auto px-4 py-4 flex flex-col gap-3">{children}</div>
+        {footer && <div style={{ borderTop: `1px solid ${C.line}` }} className="px-4 py-3 shrink-0">{footer}</div>}
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, hint, children }) {
+  return (
+    <label className="block">
+      <div className="flex items-baseline justify-between mb-1.5">
+        <span style={{ color: C.dim, fontSize: 11, letterSpacing: "0.06em" }} className="uppercase">{label}</span>
+        {hint && <span style={{ color: C.faint, fontSize: 10 }}>{hint}</span>}
+      </div>
+      {children}
+    </label>
+  );
+}
+
+function Input({ value, onChange, placeholder, type = "text", autoFocus, mono }) {
+  return (
+    <input type={type} value={value} placeholder={placeholder} autoFocus={autoFocus}
+      onChange={(e) => onChange(e.target.value)}
+      style={{ background: C.bg, border: `1px solid ${C.line}`, color: C.ink, fontSize: 14,
+        fontFamily: mono ? FONT_MONO : FONT_UI }}
+      className="w-full rounded-md px-3 py-2.5 outline-none" />
+  );
+}
+
+function Select({ value, onChange, options }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)}
+      style={{ background: C.bg, border: `1px solid ${C.line}`, color: C.ink, fontSize: 14 }}
+      className="w-full rounded-md px-3 py-2.5 outline-none appearance-none">
+      {options.map(([v, l]) => <option key={v} value={v} style={{ background: C.panel }}>{l}</option>)}
+    </select>
+  );
+}
+
+function Segmented({ options, value, onChange }) {
+  return (
+    <div style={{ background: C.bg, border: `1px solid ${C.line}` }} className="flex rounded-md p-0.5">
+      {options.map(([v, l]) => (
+        <button key={v} onClick={() => onChange(v)}
+          style={{ background: value === v ? C.raised : "transparent", color: value === v ? C.ink : C.faint, fontSize: 13 }}
+          className="flex-1 py-2 rounded font-medium">{l}</button>
+      ))}
+    </div>
+  );
+}
+
+function PrintStyles() {
+  return (
+    <style>{`
+      @media print {
+        body * { visibility: hidden !important; }
+        #invoice-print, #invoice-print * { visibility: visible !important; }
+        #invoice-print { position: absolute; left: 0; top: 0; width: 100%; border-radius: 0 !important; }
+        [data-noprint] { display: none !important; }
+      }
+      select option { color: #ECE7D9; }
+    `}</style>
+  );
+}
+
+const rootEl = document.getElementById("root");
+rootEl.innerHTML = "";
+createRoot(rootEl).render(<App />);
+
+</script>
+</body>
+</html>
