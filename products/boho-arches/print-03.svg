@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2000" viewBox="0 0 1600 2000">
+  <rect width="1600" height="2000" fill="#E7DAC6"/>
+  <rect x="80" y="80" width="1440" height="1840" fill="none" stroke="#00000015" stroke-width="2"/>
+  <path d="M 440 1300 A 360 360 0 0 1 1160 1300 Z" fill="#C26B4A"/>
+  <line x1="800" y1="1300" x2="280.0" y2="1300.0" stroke="#9C5C44" stroke-width="10" stroke-linecap="round"/>
+  <line x1="800" y1="1300" x2="349.6667900320919" y2="1040.0" stroke="#9C5C44" stroke-width="10" stroke-linecap="round"/>
+  <line x1="800" y1="1300" x2="539.9999999999998" y2="849.666790032092" stroke="#9C5C44" stroke-width="10" stroke-linecap="round"/>
+  <line x1="800" y1="1300" x2="799.9999999999999" y2="780.0" stroke="#9C5C44" stroke-width="10" stroke-linecap="round"/>
+  <line x1="800" y1="1300" x2="1060.0" y2="849.666790032092" stroke="#9C5C44" stroke-width="10" stroke-linecap="round"/>
+  <line x1="800" y1="1300" x2="1250.333209967908" y2="1039.9999999999998" stroke="#9C5C44" stroke-width="10" stroke-linecap="round"/>
+  <line x1="800" y1="1300" x2="1320.0" y2="1299.9999999999998" stroke="#9C5C44" stroke-width="10" stroke-linecap="round"/>
+</svg>

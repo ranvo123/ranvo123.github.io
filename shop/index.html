@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Quiet Press — minimalist printable wall art</title>
+<meta name="description" content="Instant-download printable wall art sets: Bauhaus shapes, mid-century modern, and boho arches. Plus a free Etsy profit calculator for sellers." />
+<meta property="og:title" content="Quiet Press — printable wall art" />
+<meta property="og:description" content="Minimalist printable wall art sets. Instant download, print any size." />
+<meta name="theme-color" content="#1c1a17" />
+<style>
+  :root{
+    --bg:#1c1a17; --panel:#262320; --panel2:#2f2b27; --line:#3a352f;
+    --ink:#F2EBDD; --dim:#bdb3a1; --faint:#8a8174;
+    --cream:#F2EBDD; --rust:#C26B4A; --terra:#B5573E;
+    --font:"Helvetica Neue",Inter,system-ui,-apple-system,Arial,sans-serif;
+    --mono:ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--font);-webkit-font-smoothing:antialiased;line-height:1.5}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+  header{border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(28,26,23,.88);backdrop-filter:blur(8px);z-index:20}
+  .nav{display:flex;align-items:center;justify-content:space-between;height:60px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.04em;text-decoration:none;color:var(--ink)}
+  .brand .dot{width:11px;height:11px;border-radius:50%;background:var(--rust);display:inline-block}
+  .nav-links{display:flex;gap:22px;font-size:14px;color:var(--dim)}
+  .nav-links a{text-decoration:none;color:var(--dim)}
+  .nav-links a:hover{color:var(--ink)}
+  .hero{padding:76px 0 52px;border-bottom:1px solid var(--line)}
+  .eyebrow{font:600 12px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--faint);margin:0 0 18px}
+  h1{font-size:clamp(34px,5.4vw,56px);line-height:1.04;margin:0 0 18px;font-weight:800;letter-spacing:-.02em}
+  .lede{font-size:18px;color:var(--dim);max-width:600px;margin:0 0 28px}
+  .cta{display:inline-flex;align-items:center;gap:8px;background:var(--rust);color:#1c1a17;font-weight:700;text-decoration:none;padding:13px 22px;border-radius:10px;font-size:15px}
+  .cta:hover{opacity:.92}
+  .cta.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+  .cta.ghost:hover{border-color:var(--dim)}
+  .cta-row{display:flex;gap:12px;flex-wrap:wrap}
+  section{padding:56px 0;border-bottom:1px solid var(--line)}
+  .sec-head{margin:0 0 8px;font-size:13px;font-family:var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+  h2{font-size:28px;margin:0 0 28px;font-weight:800;letter-spacing:-.01em}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+  @media(max-width:860px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden;display:flex;flex-direction:column}
+  .card:hover{border-color:var(--faint)}
+  .thumbs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;background:var(--line);padding:14px;}
+  .thumbs img{width:100%;height:auto;display:block;border-radius:3px;background:var(--cream)}
+  .card .body{padding:20px 22px 22px}
+  .tag{display:inline-block;font:600 11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--rust);margin-bottom:12px}
+  .card h3{font-size:19px;margin:0 0 8px;font-weight:700}
+  .card p{color:var(--dim);font-size:14px;margin:0 0 16px}
+  .price{display:flex;align-items:baseline;justify-content:space-between;padding-top:16px;border-top:1px solid var(--line)}
+  .price .amt{font-size:22px;font-weight:800}
+  .price .was{color:var(--faint);text-decoration:line-through;font-size:14px;margin-left:8px}
+  .price a{font-size:13px;color:var(--ink);text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+  .price a:hover{border-color:var(--dim)}
+  .calc{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  @media(max-width:860px){.calc{grid-template-columns:1fr}}
+  .calc .inputs{padding:28px;background:var(--panel)}
+  .calc .out{padding:28px;background:var(--panel2)}
+  .field{margin-bottom:18px}
+  .field label{display:block;font-size:13px;color:var(--dim);margin-bottom:7px}
+  .field .inp{display:flex;align-items:center;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:0 12px}
+  .field .inp:focus-within{border-color:var(--dim)}
+  .field .inp span{color:var(--faint);font-size:14px}
+  .field input{flex:1;background:transparent;border:0;outline:0;color:var(--ink);font-size:15px;padding:11px 8px;font-family:var(--mono)}
+  .field input::-webkit-outer-spin-button,.field input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .toggle{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13.5px;color:var(--dim);margin-bottom:12px}
+  .toggle input{width:16px;height:16px;accent-color:var(--rust)}
+  .row{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;font-size:14px;border-bottom:1px solid var(--line)}
+  .row .k{color:var(--dim)}
+  .row .v{font-family:var(--mono)}
+  .row.fee .v{color:var(--dim)}
+  .row.total{border-bottom:0;padding-top:16px;margin-top:6px;border-top:2px solid var(--line)}
+  .row.total .k{font-size:15px;font-weight:700;color:var(--ink)}
+  .row.total .v{font-size:24px;font-weight:800}
+  .margin{font-size:13px;color:var(--faint);margin-top:6px;font-family:var(--mono)}
+  .neg{color:#ff9b80 !important}
+  .note{font-size:12.5px;color:var(--faint);margin-top:14px;line-height:1.5}
+  .steps{counter-reset:s;display:grid;gap:14px}
+  .step{display:flex;gap:16px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+  .step .n{counter-increment:s;font-family:var(--mono);font-weight:700;color:var(--rust);min-width:28px}
+  .step .n::before{content:counter(s,decimal-leading-zero)}
+  .step h4{margin:0 0 4px;font-size:15px}
+  .step p{margin:0;color:var(--dim);font-size:13.5px}
+  .step code{background:var(--bg);padding:1px 6px;border-radius:4px;font-size:12.5px}
+  footer{padding:40px 0 64px;color:var(--faint);font-size:13px}
+  footer a{color:var(--dim)}
+  .disc{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;color:var(--dim);font-size:13px;margin-bottom:28px;line-height:1.6}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="#top"><span class="dot"></span> Quiet Press</a>
+    <nav class="nav-links">
+      <a href="#products">Prints</a>
+      <a href="#calc">Profit calculator</a>
+      <a href="#start">Get started</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <div class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Printable wall art · instant download · print any size</p>
+      <h1>Gallery walls,<br>downloaded in seconds.</h1>
+      <p class="lede">Minimalist art sets you buy once and print as large as you like. Vector files stay razor-sharp at any size — from a desk frame to a statement poster.</p>
+      <div class="cta-row">
+        <a class="cta" href="#products">Browse the sets</a>
+        <a class="cta ghost" href="#calc">Etsy profit calculator</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- PRODUCTS -->
+  <section id="products">
+    <div class="wrap">
+      <p class="sec-head">The collection</p>
+      <h2>Three coordinated sets · 6 prints each</h2>
+      <div class="grid">
+
+        <article class="card">
+          <div class="thumbs">
+            <img src="../products/bauhaus-shapes/print-01.svg" alt="Bauhaus print 1" loading="lazy">
+            <img src="../products/bauhaus-shapes/print-03.svg" alt="Bauhaus print 3" loading="lazy">
+            <img src="../products/bauhaus-shapes/print-05.svg" alt="Bauhaus print 5" loading="lazy">
+            <img src="../products/bauhaus-shapes/print-02.svg" alt="Bauhaus print 2" loading="lazy">
+            <img src="../products/bauhaus-shapes/print-04.svg" alt="Bauhaus print 4" loading="lazy">
+            <img src="../products/bauhaus-shapes/print-06.svg" alt="Bauhaus print 6" loading="lazy">
+          </div>
+          <div class="body">
+            <span class="tag">Best seller</span>
+            <h3>Bauhaus Shapes</h3>
+            <p>Bold primary geometry on warm cream. Timeless, gender-neutral, made to hang together.</p>
+            <div class="price">
+              <div><span class="amt">$12</span><span class="was">$18</span></div>
+              <a href="#" data-etsy="bauhaus-shapes">View on Etsy</a>
+            </div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="thumbs">
+            <img src="../products/mid-century-modern/print-01.svg" alt="Mid-century print 1" loading="lazy">
+            <img src="../products/mid-century-modern/print-03.svg" alt="Mid-century print 3" loading="lazy">
+            <img src="../products/mid-century-modern/print-05.svg" alt="Mid-century print 5" loading="lazy">
+            <img src="../products/mid-century-modern/print-02.svg" alt="Mid-century print 2" loading="lazy">
+            <img src="../products/mid-century-modern/print-04.svg" alt="Mid-century print 4" loading="lazy">
+            <img src="../products/mid-century-modern/print-06.svg" alt="Mid-century print 6" loading="lazy">
+          </div>
+          <div class="body">
+            <span class="tag">Warm neutrals</span>
+            <h3>Mid-Century Modern</h3>
+            <p>Mustard, terracotta, sage and navy. Calm retro shapes for any room.</p>
+            <div class="price">
+              <div><span class="amt">$12</span><span class="was">$18</span></div>
+              <a href="#" data-etsy="mid-century-modern">View on Etsy</a>
+            </div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="thumbs">
+            <img src="../products/boho-arches/print-01.svg" alt="Boho print 1" loading="lazy">
+            <img src="../products/boho-arches/print-03.svg" alt="Boho print 3" loading="lazy">
+            <img src="../products/boho-arches/print-05.svg" alt="Boho print 5" loading="lazy">
+            <img src="../products/boho-arches/print-02.svg" alt="Boho print 2" loading="lazy">
+            <img src="../products/boho-arches/print-04.svg" alt="Boho print 4" loading="lazy">
+            <img src="../products/boho-arches/print-06.svg" alt="Boho print 6" loading="lazy">
+          </div>
+          <div class="body">
+            <span class="tag">Earthy &amp; cozy</span>
+            <h3>Boho Arches</h3>
+            <p>Terracotta arches, suns and dunes. Desert-neutral calm that pairs with plants.</p>
+            <div class="price">
+              <div><span class="amt">$12</span><span class="was">$18</span></div>
+              <a href="#" data-etsy="boho-arches">View on Etsy</a>
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- CALCULATOR -->
+  <section id="calc">
+    <div class="wrap">
+      <p class="sec-head">Free seller tool</p>
+      <h2>Etsy profit calculator</h2>
+      <div class="calc">
+        <div class="inputs">
+          <div class="field">
+            <label for="price">Item price (what the buyer pays)</label>
+            <div class="inp"><span>$</span><input id="price" type="number" inputmode="decimal" value="12.00" min="0" step="0.01"></div>
+          </div>
+          <div class="field">
+            <label for="ship">Shipping you charge (digital = 0)</label>
+            <div class="inp"><span>$</span><input id="ship" type="number" inputmode="decimal" value="0.00" min="0" step="0.01"></div>
+          </div>
+          <div class="field">
+            <label for="cost">Your cost per sale (digital = 0)</label>
+            <div class="inp"><span>$</span><input id="cost" type="number" inputmode="decimal" value="0.00" min="0" step="0.01"></div>
+          </div>
+          <label class="toggle"><input id="offsite" type="checkbox"> Sale came from an Offsite Ad (+15% fee)</label>
+          <label class="toggle"><input id="regfee" type="checkbox" checked> Apply regulatory operating fee (~0.25%)</label>
+          <p class="note">Defaults use Etsy's US fee structure: $0.20 listing fee, 6.5% transaction fee, and 3% + $0.25 payment processing. Edit the price to model any product.</p>
+        </div>
+        <div class="out">
+          <div class="row fee"><span class="k">Buyer pays (item + shipping)</span><span class="v" id="o-gross">$12.00</span></div>
+          <div class="row fee"><span class="k">Listing fee</span><span class="v" id="o-listing">−$0.20</span></div>
+          <div class="row fee"><span class="k">Transaction fee (6.5%)</span><span class="v" id="o-txn">−$0.78</span></div>
+          <div class="row fee"><span class="k">Payment processing (3% + $0.25)</span><span class="v" id="o-proc">−$0.61</span></div>
+          <div class="row fee"><span class="k">Offsite Ads fee</span><span class="v" id="o-ads">$0.00</span></div>
+          <div class="row fee"><span class="k">Regulatory fee</span><span class="v" id="o-reg">−$0.03</span></div>
+          <div class="row fee"><span class="k">Your product cost</span><span class="v" id="o-cost">$0.00</span></div>
+          <div class="row total"><span class="k">Net profit per sale</span><span class="v" id="o-net">$10.38</span></div>
+          <div class="margin" id="o-margin">Margin: 86.5%</div>
+          <p class="note">Estimate only. Etsy changes fees and they vary by country — confirm current rates in your Shop Manager before pricing.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- START -->
+  <section id="start">
+    <div class="wrap">
+      <p class="sec-head">Realistic setup</p>
+      <h2>How to actually launch this</h2>
+      <div class="steps">
+        <div class="step"><div class="n"></div><div><h4>Create your Etsy seller account</h4><p>Go to etsy.com/sell, pick a shop name, set country/currency, and add a payout bank account. Only you can do this — it needs your identity and banking details.</p></div></div>
+        <div class="step"><div class="n"></div><div><h4>Make listing mockups</h4><p>Buyers want to see art in a room. Drop each print into a free framed-wall mockup (Canva has them) for your listing photos — this matters more than anything for sales.</p></div></div>
+        <div class="step"><div class="n"></div><div><h4>Upload each set as a digital download</h4><p>Each folder in <code>/products</code> is one listing. Zip the folder with <code>HOW-TO-PRINT.md</code>, set listing type to "Digital," and attach the zip.</p></div></div>
+        <div class="step"><div class="n"></div><div><h4>Paste the listing copy</h4><p>Open the matching file in <code>/listings</code> — title, all 13 tags, and the full description are written and SEO-ready.</p></div></div>
+        <div class="step"><div class="n"></div><div><h4>Price with the calculator above</h4><p>Digital art runs ~85%+ margin. Set prices so net profit clears your target, then point the "View on Etsy" buttons (search <code>data-etsy</code>) to your live listings.</p></div></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="disc">
+      <strong>An honest note.</strong> No one can guarantee a store is "profitable" — that depends on your listings, photos, traffic, and pricing, not on this site. What's here gives you the best realistic shot: high-margin digital products people actually buy, professional listings, and accurate fee math. Your <em>listing mockup photos</em> are the single biggest driver of sales on Etsy — invest time there. Always verify current Etsy fees in your own Shop Manager.
+    </div>
+    <p>Quiet Press · minimalist printable wall art · instant download.</p>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var f=function(n){var s=n<0?"−":"";return s+"$"+Math.abs(n).toFixed(2)};
+  var ids=["price","ship","cost","offsite","regfee"];
+  function num(id){var v=parseFloat($(id).value);return isNaN(v)?0:v}
+  function calc(){
+    var price=num("price"), ship=num("ship"), cost=num("cost");
+    var gross=price+ship;
+    var listing=0.20;
+    var txn=gross*0.065;                       // 6.5% transaction fee on item + shipping
+    var proc=gross*0.03+0.25;                   // US payment processing 3% + $0.25
+    var ads=$("offsite").checked?gross*0.15:0;  // Offsite Ads 15%
+    var reg=$("regfee").checked?gross*0.0025:0; // regulatory operating fee (approx)
+    var fees=listing+txn+proc+ads+reg;
+    var net=gross-fees-cost;
+    var margin=gross>0?(net/gross*100):0;
+    $("o-gross").textContent=f(gross);
+    $("o-listing").textContent=f(-listing);
+    $("o-txn").textContent=f(-txn);
+    $("o-proc").textContent=f(-proc);
+    $("o-ads").textContent=ads?f(-ads):"$0.00";
+    $("o-reg").textContent=reg?f(-reg):"$0.00";
+    $("o-cost").textContent=cost?f(-cost):"$0.00";
+    var netEl=$("o-net"); netEl.textContent=f(net);
+    netEl.className="v"+(net<0?" neg":"");
+    var mEl=$("o-margin");
+    mEl.textContent="Margin: "+margin.toFixed(1)+"%";
+    mEl.className="margin"+(net<0?" neg":"");
+  }
+  ids.forEach(function(id){
+    var el=$(id);
+    el.addEventListener("input",calc);
+    el.addEventListener("change",calc);
+  });
+  calc();
+})();
+</script>
+</body>
+</html>
