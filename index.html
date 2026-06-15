@@ -50,6 +50,7 @@ import {
   Calculator, Sparkles, Loader2, RotateCcw, ClipboardPaste,
   Scale, MessageSquare, Copy,
   Youtube, GraduationCap, Lightbulb, Rocket, Tag,
+  Crown, CreditCard,
 } from "lucide-react";
 
 /* ----------------------------------------------------------------
@@ -165,6 +166,33 @@ const supa = (SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase)
   : null;
 const BACKEND = !!supa;
 
+/* ====================================================================
+   MONEY — this is what makes Producer Desk a business, not just an app.
+   Model: freemium SaaS. The free tools are the funnel; Pro is the revenue.
+
+   To take real payments (no server needed — works on GitHub Pages):
+   1. Create a Stripe account → Payment Links → new recurring link.
+   2. In the link's settings, set the post-payment redirect to:
+        https://ranvo123.github.io/?upgraded=1
+      (that flips the buyer to Pro the moment they land back here.)
+   3. Paste the link URLs below. Leave blank to preview the flow only.
+==================================================================== */
+const BIZ = {
+  proMonthlyPrice: 9,
+  proYearlyPrice: 79,        // ~2 months free vs monthly
+  currency: "USD",
+  // Paste your Stripe Payment Link URLs here:
+  checkoutMonthlyUrl: "",    // e.g. "https://buy.stripe.com/xxxxxxxx"
+  checkoutYearlyUrl: "",     // e.g. "https://buy.stripe.com/yyyyyyyy"
+  freeDealLimit: 5,          // free accounts cap the ledger here
+  proFeatures: [
+    "Unlimited deals in the ledger",
+    "AI Contract Helper — explain, negotiate & draft replies",
+    "Stream-revenue estimator & publishing calculator",
+    "Priority email support",
+  ],
+};
+
 const NS = "thedesk:";
 let __uid = null;     // signed-in user id (cloud mode)
 let __cache = null;   // hydrated key/value cache for the signed-in user
@@ -273,6 +301,10 @@ function App() {
   const [justRegistered, setJustRegistered] = useState(false);
   const [authMode, setAuthMode] = useState("landing");  // landing | login | register
   const [recovery, setRecovery] = useState(false);
+  const [isPro, setIsPro] = useState(false);            // paying customer?
+  const [showUpgrade, setShowUpgrade] = useState(false);
+
+  const goPro = () => { setIsPro(true); saveKey("plan", "pro"); };
 
   const refreshFromStore = () => {
     setProfile(loadKey("producerProfile", null));
@@ -280,6 +312,7 @@ function App() {
     setRoyalties(loadKey("royalties", []));
     setEstRates({ ...DEFAULT_RATES, ...loadKey("estimatorRates", DEFAULT_RATES) });
     setEstShare(loadKey("estimatorShare", 100));
+    setIsPro(loadKey("plan", "free") === "pro");
   };
 
   useEffect(() => {
@@ -301,6 +334,16 @@ function App() {
         setSession(Boolean(sess) && Boolean(acc));
       }
       refreshFromStore();
+      // Returning from a successful Stripe checkout? Unlock Pro and tidy the URL.
+      try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("upgraded") === "1") {
+          setIsPro(true); saveKey("plan", "pro");
+          params.delete("upgraded");
+          const qs = params.toString();
+          window.history.replaceState({}, "", window.location.pathname + (qs ? "?" + qs : ""));
+        }
+      } catch (e) {}
       setLoading(false);
     })();
     if (BACKEND) {
@@ -435,6 +478,11 @@ function App() {
 
   const cur = profile?.currency || "USD";
 
+  // Freemium gate: free accounts cap the ledger; new deals beyond the cap
+  // route to the upgrade screen instead of being blocked silently.
+  const atDealLimit = !isPro && deals.length >= BIZ.freeDealLimit;
+  const startNewDeal = () => { if (atDealLimit) { setShowUpgrade(true); return; } setEditing({}); };
+
   if (loading)
     return (
       <div style={{ background: C.bg, color: C.faint, fontFamily: FONT_MONO, minHeight: "100vh" }}
@@ -471,11 +519,25 @@ function App() {
             </div>
           </div>
         </div>
-        <button onClick={() => setShowProfile(true)}
-          style={{ color: C.dim, border: `1px solid ${C.line}` }}
-          className="p-2 rounded-md hover:opacity-80 shrink-0" aria-label="Settings">
-          <Settings size={16} />
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {isPro ? (
+            <span style={{ background: C.raised, color: C.ink, border: `1px solid ${C.line}`, letterSpacing: "0.08em" }}
+              className="px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 uppercase">
+              <Crown size={13} /> Pro
+            </span>
+          ) : (
+            <button onClick={() => setShowUpgrade(true)}
+              style={{ background: C.amber, color: C.bg }}
+              className="px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5">
+              <Crown size={13} /> Upgrade
+            </button>
+          )}
+          <button onClick={() => setShowProfile(true)}
+            style={{ color: C.dim, border: `1px solid ${C.line}` }}
+            className="p-2 rounded-md hover:opacity-80" aria-label="Settings">
+            <Settings size={16} />
+          </button>
+        </div>
       </header>
 
       {/* ---------------- master readout ---------------- */}
@@ -524,8 +586,22 @@ function App() {
             </div>
             <FilterRow filter={filter} setFilter={setFilter} deals={deals} />
 
+            {!isPro && deals.length > 0 && (
+              <button onClick={() => setShowUpgrade(true)} data-noprint
+                style={{ background: C.panel, border: `1px solid ${atDealLimit ? C.amber : C.line}`, textAlign: "left" }}
+                className="w-full rounded-md px-3.5 py-2.5 mb-3 flex items-center justify-between gap-3">
+                <span style={{ color: atDealLimit ? C.ink : C.dim, fontSize: 12.5 }} className="flex items-center gap-2">
+                  <Crown size={14} />
+                  {atDealLimit
+                    ? `Free plan full — ${deals.length}/${BIZ.freeDealLimit} deals. Upgrade for unlimited.`
+                    : `${deals.length}/${BIZ.freeDealLimit} deals on the free plan`}
+                </span>
+                <span style={{ color: C.faint, fontSize: 12 }} className="shrink-0">Go Pro →</span>
+              </button>
+            )}
+
             {visibleDeals.length === 0 ? (
-              <EmptyState onAdd={() => setEditing({})} hasDeals={deals.length > 0} />
+              <EmptyState onAdd={startNewDeal} hasDeals={deals.length > 0} />
             ) : (
               <div className="flex flex-col gap-2.5">
                 {visibleDeals.map((d) => (
@@ -550,7 +626,8 @@ function App() {
           <GrowChannel />
         ) : tab === "contract" ? (
           <ContractReader text={contractText} setText={setContractText}
-            result={contractResult} setResult={setContractResult} />
+            result={contractResult} setResult={setContractResult}
+            isPro={isPro} onUpgrade={() => setShowUpgrade(true)} />
         ) : (
           <div className="flex flex-col gap-6">
             <RoyaltiesGuide />
@@ -561,7 +638,7 @@ function App() {
 
       {/* ---------------- add button ---------------- */}
       {(tab === "ledger" || tab === "earnings") && (
-        <button onClick={() => (tab === "earnings" ? setRoyaltyEditing({}) : setEditing({}))}
+        <button onClick={() => (tab === "earnings" ? setRoyaltyEditing({}) : startNewDeal())}
           style={{ background: C.amber, color: C.bg, boxShadow: "0 6px 20px rgba(0,0,0,0.45)" }}
           className="fixed bottom-5 right-5 z-30 rounded-full px-5 py-3.5 font-semibold flex items-center gap-2"
           data-noprint>
@@ -580,9 +657,13 @@ function App() {
         <InvoiceView deal={invoiceFor} profile={profile} cur={cur} onClose={() => setInvoiceFor(null)} />
       )}
       {showProfile && (
-        <ProfileEditor profile={profile} account={account} onLogout={onLogout}
+        <ProfileEditor profile={profile} account={account} onLogout={onLogout} isPro={isPro}
+          onUpgrade={() => { setShowProfile(false); setShowUpgrade(true); }}
           onClose={() => profile && setShowProfile(false)}
           onSave={(p) => { setProfile(p); saveKey("producerProfile", p); setShowProfile(false); }} />
+      )}
+      {showUpgrade && (
+        <UpgradeModal cur={cur} onClose={() => setShowUpgrade(false)} onActivate={() => { goPro(); setShowUpgrade(false); }} />
       )}
     </div>
   );
@@ -793,6 +874,20 @@ function AuthScreen({ mode, setMode, account, defaultEmail, justRegistered, back
                 <button onClick={() => setMode("register")}
                   style={{ background: hasAccount ? "transparent" : C.amber, color: hasAccount ? C.ink : C.bg, border: hasAccount ? `1px solid ${C.line}` : "none" }}
                   className="w-full py-3 rounded-md font-semibold">Create account</button>
+              </div>
+
+              <div style={{ borderTop: `1px solid ${C.line}` }} className="mt-4 pt-4">
+                <div style={{ color: C.faint, fontSize: 11, letterSpacing: "0.08em" }} className="uppercase font-semibold mb-2.5">
+                  Free to start · Pro from {(CURRENCIES[BIZ.currency] || "$")}{(BIZ.proYearlyPrice / 12).toFixed(0)}/mo
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {["Track every deal, invoice & royalty", "Estimate streaming & publishing income", "Pro: unlimited deals + AI contract helper"].map((t, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <Check size={14} style={{ color: C.ink }} className="mt-0.5 shrink-0" />
+                      <span style={{ color: C.dim, fontSize: 12.5 }} className="leading-snug">{t}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </>
           ) : (
@@ -1618,7 +1713,7 @@ function AiBar({ llm }) {
   );
 }
 
-function ContractReader({ text, setText, result, setResult }) {
+function ContractReader({ text, setText, result, setResult, isPro, onUpgrade }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [negBusy, setNegBusy] = useState(false);
@@ -1690,6 +1785,41 @@ function ContractReader({ text, setText, result, setResult }) {
   const toggle = (i) => setSelected((s) => ({ ...s, [i]: !s[i] }));
   const hasNeg = result && Array.isArray(result.negotiation);
   const structured = result && !result.raw;
+
+  if (!isPro) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div>
+          <h2 style={{ fontSize: 16 }} className="font-semibold mb-1 flex items-center gap-1.5">
+            <Sparkles size={16} style={{ color: C.amber }} /> Contract helper
+            <span style={{ background: C.raised, color: C.ink, border: `1px solid ${C.line}`, letterSpacing: "0.06em" }}
+              className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase flex items-center gap-1">
+              <Crown size={10} /> Pro
+            </span>
+          </h2>
+          <p style={{ color: C.dim, fontSize: 13 }} className="leading-relaxed">
+            Paste a producer agreement, beat licence, or split sheet. Get it in plain English, then see what to negotiate
+            and draft a reply.
+          </p>
+        </div>
+
+        <div style={{ background: C.panel, border: `1px solid ${C.line}` }} className="rounded-lg p-5 flex flex-col items-center text-center">
+          <div style={{ background: C.amber, color: C.bg }} className="w-11 h-11 rounded-xl flex items-center justify-center mb-3">
+            <Lock size={20} />
+          </div>
+          <div style={{ color: C.ink, fontSize: 15 }} className="font-semibold mb-1">Unlock the AI Contract Helper</div>
+          <p style={{ color: C.dim, fontSize: 13 }} className="leading-relaxed mb-4 max-w-xs">
+            Stop signing deals you don't fully understand. Pro reads any music contract, flags what to push back on,
+            and drafts your reply — privately, on your own device.
+          </p>
+          <button onClick={onUpgrade} style={{ background: C.amber, color: C.bg }}
+            className="w-full max-w-xs py-3 rounded-md font-semibold flex items-center justify-center gap-2">
+            <Crown size={16} /> Upgrade to Pro
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -2062,8 +2192,86 @@ function InvoiceView({ deal, profile, cur, onClose }) {
   );
 }
 
+/* --------------------------- upgrade / checkout ----------------- */
+function UpgradeModal({ cur, onClose, onActivate }) {
+  const [plan, setPlan] = useState("yearly");   // "monthly" | "yearly"
+  const sym = CURRENCIES[BIZ.currency] || "$";
+  const url = plan === "yearly" ? BIZ.checkoutYearlyUrl : BIZ.checkoutMonthlyUrl;
+  const price = plan === "yearly" ? BIZ.proYearlyPrice : BIZ.proMonthlyPrice;
+  const per = plan === "yearly" ? "/year" : "/month";
+  const monthlyEquiv = (BIZ.proYearlyPrice / 12);
+
+  const checkout = () => {
+    if (url) { window.location.href = url; return; }
+    // No Stripe link configured yet — preview the unlocked experience.
+    onActivate();
+  };
+
+  const Opt = ({ id, label, amount, suffix, note }) => {
+    const on = plan === id;
+    return (
+      <button onClick={() => setPlan(id)}
+        style={{ background: on ? C.raised : C.bg, border: `1px solid ${on ? C.amber : C.line}`, textAlign: "left" }}
+        className="flex-1 rounded-lg p-3.5">
+        <div className="flex items-center justify-between mb-1">
+          <span style={{ color: C.dim, fontSize: 11, letterSpacing: "0.08em" }} className="uppercase font-semibold">{label}</span>
+          <span style={{
+            background: on ? C.amber : "transparent", border: `1px solid ${on ? C.amber : C.line}`,
+            color: C.bg, width: 16, height: 16,
+          }} className="rounded-full flex items-center justify-center shrink-0">
+            {on && <Check size={11} strokeWidth={3} />}
+          </span>
+        </div>
+        <div style={{ color: C.ink }} className="font-bold text-lg">{sym}{amount}<span style={{ color: C.faint, fontSize: 12 }} className="font-medium">{suffix}</span></div>
+        {note && <div style={{ color: C.faint, fontSize: 11 }} className="mt-0.5">{note}</div>}
+      </button>
+    );
+  };
+
+  return (
+    <Sheet title="Upgrade to Pro" onClose={onClose}>
+      <div className="flex flex-col items-center text-center mb-4">
+        <div style={{ background: C.amber, color: C.bg }} className="w-12 h-12 rounded-xl flex items-center justify-center mb-2">
+          <Crown size={24} strokeWidth={2} />
+        </div>
+        <h2 style={{ fontSize: 17 }} className="font-semibold">Run the whole business from one desk</h2>
+        <p style={{ color: C.dim, fontSize: 13 }} className="mt-1 leading-relaxed">
+          You're on the free plan ({BIZ.freeDealLimit} deals). Pro unlocks everything below.
+        </p>
+      </div>
+
+      <div className="flex gap-2 mb-4">
+        <Opt id="monthly" label="Monthly" amount={BIZ.proMonthlyPrice} suffix="/mo" />
+        <Opt id="yearly" label="Yearly" amount={BIZ.proYearlyPrice} suffix="/yr"
+          note={`${sym}${monthlyEquiv.toFixed(2)}/mo · save 2 months`} />
+      </div>
+
+      <div className="flex flex-col gap-2 mb-4">
+        {BIZ.proFeatures.map((feat, i) => (
+          <div key={i} className="flex items-start gap-2.5">
+            <span style={{ background: C.raised, color: C.ink }} className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+              <Check size={12} strokeWidth={3} />
+            </span>
+            <span style={{ color: C.dim, fontSize: 13.5 }} className="leading-snug">{feat}</span>
+          </div>
+        ))}
+      </div>
+
+      <button onClick={checkout}
+        style={{ background: C.amber, color: C.bg }}
+        className="w-full py-3.5 rounded-md font-semibold flex items-center justify-center gap-2">
+        <CreditCard size={17} /> {url ? `Continue · ${sym}${price}${per}` : "Activate Pro (preview)"}
+      </button>
+      <div style={{ color: C.faint, fontSize: 11 }} className="flex items-center justify-center gap-1.5 mt-2.5 text-center leading-relaxed">
+        <ShieldCheck size={12} className="shrink-0" />
+        {url ? "Secure checkout via Stripe · cancel anytime" : "Add your Stripe Payment Link in the code to take real payments."}
+      </div>
+    </Sheet>
+  );
+}
+
 /* --------------------------- profile ---------------------------- */
-function ProfileEditor({ profile, account, onLogout, onClose, onSave }) {
+function ProfileEditor({ profile, account, onLogout, onClose, onSave, isPro, onUpgrade }) {
   const [f, setF] = useState({
     producerName: profile?.producerName || "",
     businessName: profile?.businessName || "",
@@ -2107,8 +2315,21 @@ function ProfileEditor({ profile, account, onLogout, onClose, onSave }) {
         {firstRun ? "Start tracking" : "Save settings"}
       </button>
 
+      <div style={{ borderTop: `1px solid ${C.line}` }} className="pt-3 mt-1">
+        <div style={{ color: C.faint, fontSize: 11, letterSpacing: "0.06em" }} className="uppercase mb-1.5">Plan</div>
+        <div className="flex items-center justify-between gap-2">
+          <span style={{ color: C.dim, fontSize: 13 }} className="flex items-center gap-1.5">
+            <Crown size={14} /> {isPro ? "Pro — unlimited" : `Free · up to ${BIZ.freeDealLimit} deals`}
+          </span>
+          {!isPro && (
+            <button onClick={onUpgrade} style={{ background: C.amber, color: C.bg }}
+              className="px-3 py-1.5 rounded-md text-xs font-semibold shrink-0">Upgrade</button>
+          )}
+        </div>
+      </div>
+
       {account && (
-        <div style={{ borderTop: `1px solid ${C.line}` }} className="pt-3 mt-1">
+        <div style={{ borderTop: `1px solid ${C.line}` }} className="pt-3 mt-3">
           <div style={{ color: C.faint, fontSize: 11, letterSpacing: "0.06em" }} className="uppercase mb-1">Account</div>
           <div className="flex items-center justify-between gap-2">
             <span style={{ color: C.dim, fontSize: 13 }} className="truncate">{account.email}</span>
